@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <style>
@@ -13,7 +14,7 @@
       box-sizing: border-box;
       overflow-x: hidden;
     }
-    
+
     .header {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
@@ -21,34 +22,34 @@
       margin: -15px -15px 20px -15px;
       border-radius: 0 0 10px 10px;
       text-align: center;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
       gap: 12px;
     }
-    
+
     .header h1 {
       margin: 0;
       font-size: 18px;
       font-weight: 600;
     }
-    
+
     .header-logo {
       height: 32px;
       width: auto;
       filter: brightness(0) invert(1);
     }
-    
+
     .section {
       margin-bottom: 25px;
       padding: 20px;
       background: white;
       border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       border: 1px solid #e9ecef;
     }
-    
+
     .section h3 {
       margin-top: 0;
       margin-bottom: 15px;
@@ -58,7 +59,7 @@
       border-bottom: 2px solid #e9ecef;
       padding-bottom: 8px;
     }
-    
+
     button {
       width: 100%;
       padding: 12px 16px;
@@ -69,42 +70,42 @@
       font-size: 14px;
       font-weight: 500;
       transition: all 0.2s ease;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
-    
+
     .primary-btn {
       background: linear-gradient(135deg, #28a745, #20c997);
       color: white;
     }
-    
+
     .primary-btn:hover {
       background: linear-gradient(135deg, #218838, #1ba085);
       transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
-    
+
     .danger-btn {
       background: linear-gradient(135deg, #dc3545, #e74c3c);
       color: white;
     }
-    
+
     .danger-btn:hover {
       background: linear-gradient(135deg, #c82333, #c0392b);
       transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
-    
+
     .secondary-btn {
       background: linear-gradient(135deg, #007bff, #0056b3);
       color: white;
     }
-    
+
     .secondary-btn:hover {
       background: linear-gradient(135deg, #0056b3, #004085);
       transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
-    
+
     .nav-btn {
       background: linear-gradient(135deg, #6c757d, #5a6268);
       color: white;
@@ -112,65 +113,65 @@
       display: inline-block;
       margin: 4px 1%;
     }
-    
+
     .nav-btn:hover {
       background: linear-gradient(135deg, #5a6268, #495057);
       transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
-    
+
     .download-btn {
       background: linear-gradient(135deg, #fd7e14, #e65100);
       color: white;
     }
-    
+
     .download-btn:hover {
       background: linear-gradient(135deg, #e65100, #bf360c);
       transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
-    
+
     .sentiment-btn {
       width: 30%;
       margin: 4px 1.5%;
       font-size: 12px;
       padding: 8px 12px;
     }
-    
+
     .sentiment-positive {
       background: linear-gradient(135deg, #28a745, #20c997);
       color: white;
     }
-    
+
     .sentiment-neutral {
       background: linear-gradient(135deg, #ffc107, #ff8f00);
       color: white;
     }
-    
+
     .sentiment-negative {
       background: linear-gradient(135deg, #dc3545, #c82333);
       color: white;
     }
-    
+
     .sentiment-positive:hover {
       background: linear-gradient(135deg, #218838, #1ba085);
     }
-    
+
     .sentiment-neutral:hover {
       background: linear-gradient(135deg, #e0a800, #ff6f00);
     }
-    
+
     .sentiment-negative:hover {
       background: linear-gradient(135deg, #c82333, #a71e2a);
     }
-    
+
     .sentiment-btn.selected {
       transform: scale(0.95);
-      box-shadow: inset 0 3px 6px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.8);
-      border: 2px solid rgba(255,255,255,0.9);
+      box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.8);
+      border: 2px solid rgba(255, 255, 255, 0.9);
       font-weight: bold;
     }
-    
+
     button:disabled {
       background: #e9ecef !important;
       color: #6c757d !important;
@@ -178,8 +179,10 @@
       transform: none !important;
       box-shadow: none !important;
     }
-    
-    #csvFile, #topicFile, #variationsFile {
+
+    #csvFile,
+    #topicFile,
+    #variationsFile {
       width: 100%;
       padding: 8px;
       margin: 10px 0;
@@ -189,11 +192,13 @@
       font-size: 14px;
       transition: border-color 0.2s ease;
     }
-    
-    #csvFile:hover, #topicFile:hover, #variationsFile:hover {
+
+    #csvFile:hover,
+    #topicFile:hover,
+    #variationsFile:hover {
       border-color: #007bff;
     }
-    
+
     select {
       width: 100%;
       padding: 10px;
@@ -204,13 +209,13 @@
       font-size: 14px;
       cursor: pointer;
     }
-    
+
     select:focus {
       border-color: #007bff;
       outline: none;
-      box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
     }
-    
+
     .status {
       padding: 12px;
       margin: 12px 0;
@@ -219,25 +224,25 @@
       line-height: 1.4;
       font-weight: 500;
     }
-    
+
     .status.success {
       background-color: #d4edda;
       color: #155724;
       border: 1px solid #c3e6cb;
     }
-    
+
     .status.info {
       background-color: #d1ecf1;
       color: #0c5460;
       border: 1px solid #bee5eb;
     }
-    
+
     .status.warning {
       background-color: #fff3cd;
       color: #856404;
       border: 1px solid #ffeaa7;
     }
-    
+
     .progress {
       font-size: 12px;
       color: #6c757d;
@@ -247,7 +252,7 @@
       margin: 10px 0;
       text-align: center;
     }
-    
+
     .match-info {
       font-size: 13px;
       color: #495057;
@@ -258,7 +263,7 @@
       border-left: 4px solid #007bff;
       font-weight: 500;
     }
-    
+
     .controls {
       display: flex;
       justify-content: space-between;
@@ -266,7 +271,7 @@
       flex-wrap: wrap;
       gap: 8px;
     }
-    
+
     .tag-controls {
       display: flex;
       gap: 10px;
@@ -274,7 +279,7 @@
       flex-wrap: wrap;
       align-items: stretch;
     }
-    
+
     .tag-controls button {
       flex: 1;
       margin: 0;
@@ -284,28 +289,30 @@
       pointer-events: auto;
       cursor: pointer;
     }
-    
+
     .tag-controls .secondary-btn {
-      flex: 0.9; /* Slightly smaller than KEEP/DELETE buttons */
+      flex: 0.9;
+      /* Slightly smaller than KEEP/DELETE buttons */
       min-width: 120px;
     }
-    
+
     .sentiment-controls {
       text-align: center;
       margin: 15px 0;
     }
-    
+
     .sentiment-controls h4 {
       margin: 0 0 10px 0;
       color: #495057;
       font-size: 14px;
     }
-    
+
     .topic-controls {
       margin: 15px 0;
     }
-    
-    .topic-controls h4, .date-controls h4 {
+
+    .topic-controls h4,
+    .date-controls h4 {
       margin: 0 0 8px 0;
       color: #495057;
       font-size: 14px;
@@ -328,13 +335,13 @@
     #dateInput:focus {
       border-color: #007bff;
       outline: none;
-      box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
     }
 
     #clearDateBtn {
       width: 100%;
     }
-    
+
     .current-entry {
       background: #f8f9fa;
       padding: 15px;
@@ -344,21 +351,21 @@
       font-size: 13px;
       line-height: 1.5;
     }
-    
+
     .current-entry strong {
       color: #495057;
     }
-    
+
     .current-entry a {
       color: #007bff;
       text-decoration: none;
       word-break: break-all;
     }
-    
+
     .current-entry a:hover {
       text-decoration: underline;
     }
-    
+
     .nav-controls {
       display: flex;
       gap: 8px;
@@ -366,14 +373,14 @@
       align-items: center;
       justify-content: space-between;
     }
-    
+
     .loading-indicator {
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 12px;
     }
-    
+
     .loading-dot {
       width: 12px;
       height: 12px;
@@ -381,38 +388,40 @@
       display: inline-block;
       transition: all 0.3s ease;
     }
-    
+
     .loading-dot.loading {
       background-color: #dc3545;
       animation: pulse-red 1.5s infinite;
     }
-    
+
     .loading-dot.ready {
       background-color: #28a745;
       animation: none;
     }
-    
+
     .loading-text {
       color: #6c757d;
       font-weight: 500;
       min-width: 80px;
     }
-    
+
     @keyframes pulse-red {
       0% {
         background-color: #dc3545;
         transform: scale(1);
       }
+
       50% {
         background-color: #ff6b6b;
         transform: scale(1.1);
       }
+
       100% {
         background-color: #dc3545;
         transform: scale(1);
       }
     }
-    
+
     .step-number {
       background: #007bff;
       color: white;
@@ -427,25 +436,25 @@
       margin-right: 8px;
       flex-shrink: 0;
     }
-    
+
     .step-number.completed {
       background: #28a745;
     }
-    
+
     .step-number.active {
       background: #fd7e14;
     }
-    
+
     .section-content {
       display: flex;
       align-items: flex-start;
       gap: 10px;
     }
-    
+
     .section-text {
       flex: 1;
     }
-    
+
     .file-section {
       margin-bottom: 15px;
       padding: 10px;
@@ -453,36 +462,42 @@
       border-radius: 6px;
       background: #f8f9fa;
     }
-    
+
     .file-section h4 {
       margin: 0 0 10px 0;
       color: #495057;
       font-size: 14px;
     }
-    
+
     ::-webkit-scrollbar {
       width: 8px;
     }
-    
+
     ::-webkit-scrollbar-track {
       background: #f1f1f1;
       border-radius: 4px;
     }
-    
+
     ::-webkit-scrollbar-thumb {
       background: #c1c1c1;
       border-radius: 4px;
     }
-    
+
     ::-webkit-scrollbar-thumb:hover {
       background: #a8a8a8;
     }
   </style>
 </head>
+
 <body>
   <div class="header">
-    <img src="gravityresearch_logo.png" alt="Gravity Research" class="header-logo">
-    <h1>CSV Link Reviewer</h1>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <img src="gravityresearch_logo.png" alt="Gravity Research" class="header-logo">
+      <h1>CSV Link Reviewer</h1>
+    </div>
+    <button id="closeBtn"
+      style="background: transparent; border: 1px solid white; color: white; padding: 4px 8px; font-size: 12px; margin: 0; width: auto; cursor: pointer;">✕
+      Close</button>
   </div>
 
   <div class="section">
@@ -490,7 +505,7 @@
       <div class="step-number" id="step1">1</div>
       <div class="section-text">
         <h3>Upload Files</h3>
-        
+
         <div class="file-section">
           <h4>📄 CSV Data File</h4>
           <input type="file" id="csvFile" accept=".csv" />
@@ -534,7 +549,7 @@
         <h3>Review Current Entry</h3>
         <div class="current-entry" id="currentEntry"></div>
         <div class="match-info" id="matchInfo"></div>
-        
+
         <div class="nav-controls">
           <button id="prevMatch" class="nav-btn">← Previous</button>
           <button id="nextMatch" class="nav-btn">Next →</button>
@@ -556,7 +571,7 @@
           <select id="topicSelect">
             <option value="">Select Topic...</option>
           </select>
-          
+
           <h4>📋 Sub-topic</h4>
           <select id="subtopicSelect">
             <option value="">Select Sub-topic...</option>
@@ -566,9 +581,10 @@
         <div class="date-controls">
           <h4>📅 Date</h4>
           <input type="date" id="dateInput" />
-          <button id="clearDateBtn" class="secondary-btn" style="margin-top: 5px; padding: 4px 8px; font-size: 12px;">Clear Date</button>
+          <button id="clearDateBtn" class="secondary-btn"
+            style="margin-top: 5px; padding: 4px 8px; font-size: 12px;">Clear Date</button>
         </div>
-        
+
         <div class="tag-controls">
           <button id="prevEntryBtn" class="secondary-btn">← Previous Entry</button>
           <button id="keepBtn" class="primary-btn">✓ KEEP</button>
@@ -591,4 +607,5 @@
 
   <script src="sidebar.js"></script>
 </body>
+
 </html>

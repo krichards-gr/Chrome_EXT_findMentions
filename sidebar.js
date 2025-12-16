@@ -35,6 +35,9 @@ class CSVReviewer {
 
     // Add keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+
+    // Close button
+    document.getElementById('closeBtn').addEventListener('click', () => this.cleanExit());
   }
 
   handleKeyboard(e) {
@@ -1151,6 +1154,22 @@ Are you sure you want to continue?`);
       console.error('Error clearing data:', error);
       this.showStatus('processingStatus', `❌ Error clearing data: ${error.message}`, 'warning');
     }
+  }
+
+  async cleanExit() {
+    console.log('🛑 Clean exit requested');
+
+    // Stop processing flag
+    this.isProcessing = false;
+
+    // Save state
+    await this.saveState();
+
+    // Clean up any preloaded tabs
+    this.cleanupAllPreloadedTabs();
+
+    // Close the sidebar window
+    window.close();
   }
 
   resetUI() {
