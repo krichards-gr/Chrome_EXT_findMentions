@@ -24,6 +24,7 @@ class CSVReviewer {
     document.getElementById('downloadCsv').addEventListener('click', () => this.downloadCSV());
     document.getElementById('clearAllData').addEventListener('click', () => this.clearAllData());
     document.getElementById('confirmMapping').addEventListener('click', () => this.confirmMapping());
+    document.getElementById('confirmSheet').addEventListener('click', () => this.confirmSheet());
 
     // Sentiment buttons
     document.getElementById('sentimentPositive').addEventListener('click', () => this.setSentiment('Positive'));
@@ -109,17 +110,48 @@ class CSVReviewer {
       this.showStatus('csvStatus', '⏳ Reading file...', 'info');
 
       const data = await this.readFileAsArrayBuffer(file);
-      const workbook = XLSX.read(data, { type: 'array' });
+      this.currentWorkbook = XLSX.read(data, { type: 'array' });
 
-      // Use the first sheet
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
+      const sheetNames = this.currentWorkbook.SheetNames;
+
+      if (sheetNames.length === 0) {
+        this.showStatus('csvStatus', 'File is empty (no sheets found)', 'warning');
+        return;
+      }
+
+      // If multiple sheets, show selection UI
+      if (sheetNames.length > 1) {
+        this.populateDropdown('sheetSelect', sheetNames);
+        document.getElementById('sheetSection').style.display = 'block';
+        document.getElementById('mappingSection').style.display = 'none'; // Hide mapping for now
+        this.showStatus('csvStatus', `✅ File loaded. Found ${sheetNames.length} sheets. Please select one.`, 'info');
+      } else {
+        // Just one sheet, process immediately
+        this.processSheet(sheetNames[0]);
+      }
+
+    } catch (error) {
+      console.error('Error loading file:', error);
+      this.showStatus('csvStatus', `❌ Error loading file: ${error.message}`, 'warning');
+    }
+  }
+
+  confirmSheet() {
+    const sheetName = document.getElementById('sheetSelect').value;
+    if (sheetName) {
+      this.processSheet(sheetName);
+    }
+  }
+
+  processSheet(sheetName) {
+    try {
+      const worksheet = this.currentWorkbook.Sheets[sheetName];
 
       // Parse to JSON (raw data)
-      this.rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" }); // defval ensures empty cells are empty strings
+      this.rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
       if (this.rawData.length === 0) {
-        this.showStatus('csvStatus', 'File is empty or invalid', 'warning');
+        this.showStatus('csvStatus', 'Selected sheet is empty', 'warning');
         return;
       }
 
@@ -130,18 +162,16 @@ class CSVReviewer {
       // Populate Dropdowns
       this.populateDropdown('mapCorp', headers);
       this.populateDropdown('mapLink', headers);
-      this.populateDropdown('mapDate', headers, true); // true = add empty option
+      this.populateDropdown('mapDate', headers, true);
 
-      // Show Mapping Section
+      // Show Mapping Section & Hide Sheet Section
+      document.getElementById('sheetSection').style.display = 'none';
       document.getElementById('mappingSection').style.display = 'block';
-      this.showStatus('csvStatus', `✅ File loaded. Please map columns below.`, 'success');
-
-      // Update Step 1 indicator but don't finish it yet
-      // (Wait for mapping confirmation)
+      this.showStatus('csvStatus', `✅ Sheet "${sheetName}" loaded. Please map columns.`, 'success');
 
     } catch (error) {
-      console.error('Error loading file:', error);
-      this.showStatus('csvStatus', `❌ Error loading file: ${error.message}`, 'warning');
+      console.error('Error processing sheet:', error);
+      this.showStatus('csvStatus', `❌ Error processing sheet: ${error.message}`, 'warning');
     }
   }
 
