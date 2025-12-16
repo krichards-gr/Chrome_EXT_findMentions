@@ -1,0 +1,29 @@
+/* Highlight styles for search matches */
+.csv-reviewer-highlight {
+  background-color: #ffff99 !important;
+  padding: 1px 2px !important;
+  border-radius: 2px !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 0, 0.3) !important;
+  position: relative !important;
+  z-index: 1000 !important;
+}
+
+.csv-reviewer-current-highlight {
+  background-color: #ff6b35 !important;
+  color: white !important;
+  font-weight: bold !important;
+  box-shadow: 0 0 0 2px #ff6b35 !important;
+  animation: csv-reviewer-pulse 1s ease-in-out !important;
+}
+
+@keyframes csv-reviewer-pulse {
+  0% {
+    box-shadow: 0 0 0 2px #ff6b35, 0 0 0 4px rgba(255, 107, 53, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 2px #ff6b35, 0 0 0 8px rgba(255, 107, 53, 0.1);
+  }
+  100% {
+    box-shadow: 0 0 0 2px #ff6b35, 0 0 0 4px rgba(255, 107, 53, 0.3);
+  }
+}

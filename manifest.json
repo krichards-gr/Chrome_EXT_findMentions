@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "CSV Link Reviewer - Sidebar",
+  "version": "1.0",
+  "description": "Review and tag CSV entries by analyzing linked pages",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_title": "CSV Link Reviewer"
+  },
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["sidebar.html", "gravityresearch_logo.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
