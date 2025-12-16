@@ -23,6 +23,7 @@ class CSVReviewer {
     document.getElementById('nextMatch').addEventListener('click', () => this.navigateMatch('next'));
     document.getElementById('downloadCsv').addEventListener('click', () => this.downloadCSV());
     document.getElementById('clearAllData').addEventListener('click', () => this.clearAllData());
+    document.getElementById('confirmMapping').addEventListener('click', () => this.confirmMapping());
 
     // Sentiment buttons
     document.getElementById('sentimentPositive').addEventListener('click', () => this.setSentiment('Positive'));
@@ -100,44 +101,131 @@ class CSVReviewer {
     const file = fileInput.files[0];
 
     if (!file) {
-      this.showStatus('csvStatus', 'Please select a CSV file', 'warning');
+      this.showStatus('csvStatus', 'Please select a file', 'warning');
       return;
     }
 
     try {
-      const text = await this.readFileAsText(file);
-      this.csvData = this.parseCSV(text);
+      this.showStatus('csvStatus', '⏳ Reading file...', 'info');
 
-      if (this.csvData.length === 0) {
-        this.showStatus('csvStatus', 'CSV file is empty or invalid', 'warning');
+      const data = await this.readFileAsArrayBuffer(file);
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      // Use the first sheet
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      // Parse to JSON (raw data)
+      this.rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" }); // defval ensures empty cells are empty strings
+
+      if (this.rawData.length === 0) {
+        this.showStatus('csvStatus', 'File is empty or invalid', 'warning');
         return;
       }
 
-      // Validate required columns
-      const firstRow = this.csvData[0];
-      if (!firstRow.corporation || !firstRow.link) {
-        this.showStatus('csvStatus', 'CSV must have "corporation" and "link" columns', 'warning');
-        return;
-      }
+      // Get headers from the first row
+      const headers = Object.keys(this.rawData[0]);
+      console.log('Detected headers:', headers);
 
-      // Add new columns if not present
-      this.csvData.forEach(row => {
-        if (!row['KEEP/DELETE']) row['KEEP/DELETE'] = '';
-        if (!row['Sentiment']) row['Sentiment'] = '';
-        if (!row['Topic']) row['Topic'] = '';
-        if (!row['Sub-topic']) row['Sub-topic'] = '';
-        if (!row['Date']) row['Date'] = '';
-      });
+      // Populate Dropdowns
+      this.populateDropdown('mapCorp', headers);
+      this.populateDropdown('mapLink', headers);
+      this.populateDropdown('mapDate', headers, true); // true = add empty option
 
-      await this.saveState();
-      this.showStatus('csvStatus', `✅ Loaded ${this.csvData.length} entries successfully`, 'success');
-      document.getElementById('startProcessing').disabled = false;
-      document.getElementById('downloadCsv').disabled = false;
-      this.updateStepIndicators();
+      // Show Mapping Section
+      document.getElementById('mappingSection').style.display = 'block';
+      this.showStatus('csvStatus', `✅ File loaded. Please map columns below.`, 'success');
+
+      // Update Step 1 indicator but don't finish it yet
+      // (Wait for mapping confirmation)
 
     } catch (error) {
-      this.showStatus('csvStatus', `❌ Error loading CSV: ${error.message}`, 'warning');
+      console.error('Error loading file:', error);
+      this.showStatus('csvStatus', `❌ Error loading file: ${error.message}`, 'warning');
     }
+  }
+
+  readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  populateDropdown(id, options, addEmpty = false) {
+    const select = document.getElementById(id);
+    select.innerHTML = '';
+
+    if (addEmpty) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = '-- Select Column (Optional) --';
+      select.appendChild(option);
+    }
+
+    options.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt;
+      option.textContent = opt;
+      select.appendChild(option);
+
+      // Smart Auto-selection logic
+      const lowerOpt = opt.toLowerCase();
+      if (id === 'mapCorp' && (lowerOpt.includes('company') || lowerOpt.includes('corporation') || lowerOpt.includes('name'))) {
+        option.selected = true;
+      }
+      if (id === 'mapLink' && (lowerOpt.includes('link') || lowerOpt.includes('url') || lowerOpt.includes('website'))) {
+        option.selected = true;
+      }
+      if (id === 'mapDate' && (lowerOpt.includes('date'))) {
+        option.selected = true;
+      }
+    });
+  }
+
+  async confirmMapping() {
+    const corpCol = document.getElementById('mapCorp').value;
+    const linkCol = document.getElementById('mapLink').value;
+    const dateCol = document.getElementById('mapDate').value;
+
+    if (!corpCol || !linkCol) {
+      alert('Please select both Corporation and Link columns.');
+      return;
+    }
+
+    this.columnMapping = {
+      corporation: corpCol,
+      link: linkCol,
+      date: dateCol
+    };
+
+    console.log('Column Mapping Confirmed:', this.columnMapping);
+
+    // Transform rawData into internal csvData format
+    this.csvData = this.rawData.map(row => ({
+      _original: row, // Keep original data reference
+      corporation: row[corpCol],
+      link: row[linkCol],
+      // Initialize extension fields
+      'KEEP/DELETE': row['KEEP/DELETE'] || '',
+      'Sentiment': row['Sentiment'] || '',
+      'Topic': row['Topic'] || '',
+      'Sub-topic': row['Sub-topic'] || '',
+      'Date': row[dateCol] || row['Date'] || '' // Priority: Mapped Col -> Existing 'Date' col -> Empty
+    }));
+
+    // Save state
+    await this.saveState();
+
+    // UI Updates
+    document.getElementById('mappingSection').style.display = 'none';
+    this.showStatus('csvStatus', `✅ Mapped & Ready! ${this.csvData.length} entries.`, 'success');
+
+    document.getElementById('startProcessing').disabled = false;
+    document.getElementById('downloadCsv').disabled = false;
+    this.updateStepIndicators();
   }
 
   async loadTopics() {
@@ -1089,26 +1177,36 @@ class CSVReviewer {
       return;
     }
 
-    const headers = Object.keys(this.csvData[0]);
-    const csvContent = [
-      headers.join(','),
-      ...this.csvData.map(row =>
-        headers.map(header => `"${(row[header] || '').toString().replace(/"/g, '""')}"`).join(',')
-      )
-    ].join('\n');
+    try {
+      // Prepare data for export: Original Columns + Extension Columns
+      const exportData = this.csvData.map(row => {
+        // Start with original data clone
+        const exportRow = { ...row._original };
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+        // Add/Overwrite extension fields
+        exportRow['KEEP/DELETE'] = row['KEEP/DELETE'];
+        exportRow['Sentiment'] = row['Sentiment'];
+        exportRow['Topic'] = row['Topic'];
+        exportRow['Sub-topic'] = row['Sub-topic'];
+        exportRow['Date'] = row['Date'];
 
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `processed_entries_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+        return exportRow;
+      });
 
-    this.showStatus('processingStatus', '📄 CSV downloaded successfully!', 'success');
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(wb, ws, "Processed Data");
+
+      // Generate file
+      XLSX.writeFile(wb, `processed_entries_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      this.showStatus('processingStatus', '📄 Excel file downloaded successfully!', 'success');
+
+    } catch (error) {
+      console.error('Export error:', error);
+      this.showStatus('processingStatus', `❌ Export failed: ${error.message}`, 'warning');
+    }
   }
 
   async clearAllData() {

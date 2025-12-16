@@ -563,10 +563,30 @@
         <h3>Upload Files</h3>
 
         <div class="file-section">
-          <h4>📄 CSV Data File</h4>
-          <input type="file" id="csvFile" accept=".csv" />
+          <h4>📄 Data File (CSV or Excel)</h4>
+          <input type="file" id="csvFile" accept=".csv, .xlsx, .xls" />
           <button id="loadCsv" class="secondary-btn">Load CSV</button>
           <div id="csvStatus"></div>
+        </div>
+
+        <!-- NEW: Column Mapping Section (Hidden by default) -->
+        <div class="file-section" id="mappingSection"
+          style="display: none; border-left: 4px solid var(--primary-teal);">
+          <h4>🗺️ Map Your Columns</h4>
+          <p style="font-size: 12px; margin-bottom: 15px; color: #666;">
+            Select which columns from your file match the required fields.
+          </p>
+
+          <label style="font-size: 12px; font-weight: 500;">Corporation Name Column *</label>
+          <select id="mapCorp" style="background-color: #f8ffff; border-color: var(--primary-teal);"></select>
+
+          <label style="font-size: 12px; font-weight: 500;">Link/URL Column *</label>
+          <select id="mapLink" style="background-color: #f8ffff; border-color: var(--primary-teal);"></select>
+
+          <label style="font-size: 12px; font-weight: 500;">Date Column (Optional)</label>
+          <select id="mapDate"></select>
+
+          <button id="confirmMapping" class="primary-btn" style="margin-top: 10px;">✅ Confirm Mapping</button>
         </div>
 
         <div class="file-section">
@@ -661,6 +681,7 @@
     </div>
   </div>
 
+  <script src="lib/xlsx.full.min.js"></script>
   <script src="sidebar.js"></script>
 </body>
 
