@@ -243,7 +243,7 @@ class CSVReviewer {
       'Sentiment': row['Sentiment'] || '',
       'Topic': row['Topic'] || '',
       'Sub-topic': row['Sub-topic'] || '',
-      'Date': row[dateCol] || row['Date'] || '' // Priority: Mapped Col -> Existing 'Date' col -> Empty
+      'Date': this.formatExcelDate(row[dateCol] || row['Date']) // Priority: Mapped Col -> Existing 'Date' col
     }));
 
     // Save state
@@ -1350,6 +1350,36 @@ Are you sure you want to continue?`);
 
     // Reset step indicators
     this.updateStepIndicators();
+  }
+
+  formatExcelDate(value) {
+    if (!value) return '';
+
+    // Handle Excel number (approx days since 1900)
+    // Excel base date is Dec 30, 1899 (mostly)
+    if (typeof value === 'number' && value > 25569) { // > 1/1/1970
+      try {
+        const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+        return date.toISOString().split('T')[0];
+      } catch (e) {
+        console.warn('Failed to parse Excel date number:', value);
+        return value.toString();
+      }
+    }
+
+    // Handle JS Date object (if SheetJS parsed it)
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+
+    // Handle String (Basic Cleanup)
+    if (typeof value === 'string') {
+      // If it looks like a date, try to standardize?
+      // For now, just return as is or maybe simple regex check
+      return value.trim();
+    }
+
+    return value.toString();
   }
 
   async saveState() {
