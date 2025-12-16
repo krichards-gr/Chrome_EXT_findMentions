@@ -163,6 +163,9 @@ class CSVReviewer {
       this.populateDropdown('mapCorp', headers);
       this.populateDropdown('mapLink', headers);
       this.populateDropdown('mapDate', headers, true);
+      this.populateDropdown('mapTopic', headers, true);
+      this.populateDropdown('mapSubtopic', headers, true);
+      this.populateDropdown('mapSentiment', headers, true);
 
       // Show Mapping Section & Hide Sheet Section
       document.getElementById('sheetSection').style.display = 'none';
@@ -212,6 +215,10 @@ class CSVReviewer {
       if (id === 'mapDate' && (lowerOpt.includes('date'))) {
         option.selected = true;
       }
+      if (id === 'mapTopic' && (lowerOpt === 'topic' || lowerOpt.includes('category'))) {
+        // Auto-select if it looks very much like a topic, otherwise defaulted to empty by addEmpty=true
+        option.selected = true;
+      }
     });
   }
 
@@ -219,6 +226,9 @@ class CSVReviewer {
     const corpCol = document.getElementById('mapCorp').value;
     const linkCol = document.getElementById('mapLink').value;
     const dateCol = document.getElementById('mapDate').value;
+    const topicCol = document.getElementById('mapTopic').value;
+    const subtopicCol = document.getElementById('mapSubtopic').value;
+    const sentimentCol = document.getElementById('mapSentiment').value;
 
     if (!corpCol || !linkCol) {
       alert('Please select both Corporation and Link columns.');
@@ -228,7 +238,10 @@ class CSVReviewer {
     this.columnMapping = {
       corporation: corpCol,
       link: linkCol,
-      date: dateCol
+      date: dateCol,
+      topic: topicCol,
+      subtopic: subtopicCol,
+      sentiment: sentimentCol
     };
 
     console.log('Column Mapping Confirmed:', this.columnMapping);
@@ -240,9 +253,9 @@ class CSVReviewer {
       link: row[linkCol],
       // Initialize extension fields
       'KEEP/DELETE': row['KEEP/DELETE'] || '',
-      'Sentiment': row['Sentiment'] || '',
-      'Topic': row['Topic'] || '',
-      'Sub-topic': row['Sub-topic'] || '',
+      'Sentiment': row[sentimentCol] || row['Sentiment'] || '', // Mapped -> Existing -> Empty
+      'Topic': row[topicCol] || '',
+      'Sub-topic': row[subtopicCol] || row['Sub-topic'] || '', // Mapped -> Existing -> Empty
       'Date': this.formatExcelDate(row[dateCol] || row['Date']) // Priority: Mapped Col -> Existing 'Date' col
     }));
 
@@ -992,30 +1005,58 @@ class CSVReviewer {
     // Update the display
     this.updateCurrentEntryDisplay();
 
+    // Color Constants
+    const BG_FILLED = '#e6fffa'; // Light Green
+    const BG_EMPTY = '#fff5f5';  // Light Red
+
     // Update sentiment buttons
     document.querySelectorAll('.sentiment-btn').forEach(btn => btn.classList.remove('selected'));
-    if (sentiment) {
-      document.getElementById('sentiment' + sentiment)?.classList.add('selected');
+    // Select styling for container group
+    const sentimentGroup = document.querySelector('.sentiment-group');
+    if (sentimentGroup) {
+      if (sentiment) {
+        document.getElementById('sentiment' + sentiment)?.classList.add('selected');
+        sentimentGroup.style.backgroundColor = BG_FILLED;
+        sentimentGroup.style.borderRadius = '5px';
+        sentimentGroup.style.padding = '5px';
+      } else {
+        sentimentGroup.style.backgroundColor = BG_EMPTY;
+        sentimentGroup.style.borderRadius = '5px';
+        sentimentGroup.style.padding = '5px';
+      }
     }
 
     // Update topic dropdowns
+    const topicSelect = document.getElementById('topicSelect');
+    const subtopicSelect = document.getElementById('subtopicSelect');
+
     if (topic) {
-      document.getElementById('topicSelect').value = topic;
+      topicSelect.value = topic;
       this.updateSubtopics();
+      topicSelect.style.backgroundColor = BG_FILLED;
+
+      // Handle subtopic with delay for population
       setTimeout(() => {
         if (subtopic) {
-          document.getElementById('subtopicSelect').value = subtopic;
+          subtopicSelect.value = subtopic;
+          subtopicSelect.style.backgroundColor = BG_FILLED;
+        } else {
+          subtopicSelect.value = '';
+          subtopicSelect.style.backgroundColor = BG_EMPTY;
         }
-      }, 100); // Small delay to ensure subtopics are populated
+      }, 100);
     } else {
-      document.getElementById('topicSelect').value = '';
-      document.getElementById('subtopicSelect').innerHTML = '<option value="">Select Sub-topic...</option>';
+      topicSelect.value = '';
+      topicSelect.style.backgroundColor = BG_EMPTY;
+      subtopicSelect.innerHTML = '<option value="">Select Sub-topic...</option>';
+      subtopicSelect.style.backgroundColor = BG_EMPTY;
     }
 
     // Update date input
     const dateInput = document.getElementById('dateInput');
     if (dateInput) {
       dateInput.value = date || '';
+      dateInput.style.backgroundColor = date ? BG_FILLED : BG_EMPTY;
     }
 
     document.getElementById('reviewSection').style.display = 'block';
