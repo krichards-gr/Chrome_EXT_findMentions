@@ -590,6 +590,10 @@ class CSVReviewer {
 
         if (results) {
           this.updateMatchInfo(results.matchCount, results.currentMatch, regexInfo.terms.join(' | '));
+
+          // NEW: Automatically check for date
+          this.autoDetectDate(tabId);
+
           return;
         }
       } catch (error) {
@@ -636,6 +640,43 @@ class CSVReviewer {
 
     // Update loading indicator based on search results
     this.updateLoadingIndicator('ready', matchCount > 0 ? `Ready (${matchCount} matches)` : 'Ready (no matches)');
+  }
+
+  async autoDetectDate(tabId) {
+    // Only auto-detect if date is empty
+    if (this.csvData[this.currentIndex]['Date']) {
+      console.log('📅 Date already set for this entry, skipping auto-detect');
+      return;
+    }
+
+    try {
+      console.log('📅 Requesting date scan...');
+      const result = await chrome.tabs.sendMessage(tabId, {
+        action: 'scanForDate'
+      });
+
+      if (result && result.date) {
+        console.log(`📅 Received date: ${result.date} from ${result.source}`);
+
+        // Set the date input
+        document.getElementById('dateInput').value = result.date;
+
+        // Save it effectively
+        this.csvData[this.currentIndex]['Date'] = result.date;
+        this.saveState();
+
+        // Show a temporary visual cue?
+        const dateInput = document.getElementById('dateInput');
+        dateInput.style.backgroundColor = '#e8f0fe'; // Light blue flash
+        setTimeout(() => {
+          dateInput.style.backgroundColor = 'white';
+        }, 2000);
+
+        this.updateCurrentEntryDisplay();
+      }
+    } catch (error) {
+      console.log('Error auto-detecting date:', error);
+    }
   }
 
   updateProgressInfo() {

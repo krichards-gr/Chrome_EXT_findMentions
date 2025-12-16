@@ -34,6 +34,11 @@ class PageSearcher {
           sendResponse(navResults);
           break;
 
+        case 'scanForDate':
+          const dateResult = this.findDate();
+          sendResponse(dateResult);
+          break;
+
         case 'clearHighlights':
           this.clearHighlights();
           sendResponse({ success: true });
@@ -45,6 +50,125 @@ class PageSearcher {
     } catch (error) {
       console.error('Error handling message:', error);
       sendResponse({ error: error.message });
+    }
+  }
+
+  // ========== DATE DETECTION LOGIC ==========
+  findDate() {
+    try {
+      console.log('📅 Scanning page for dates...');
+      let foundDate = null;
+
+      // correct date format YYYY-MM-DD
+      const formatDate = (dateStr) => {
+        try {
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) return null;
+          return date.toISOString().split('T')[0];
+        } catch (e) {
+          return null;
+        }
+      };
+
+      // 1. Check meta tags (highest confidence)
+      const metaSelectors = [
+        'meta[property="article:published_time"]',
+        'meta[name="article:published_time"]',
+        'meta[property="og:published_time"]',
+        'meta[name="pubdate"]',
+        'meta[name="date"]',
+        'meta[name="citation_date"]',
+        'meta[name="DC.date.issued"]'
+      ];
+
+      for (const selector of metaSelectors) {
+        const element = document.querySelector(selector);
+        if (element && element.content) {
+          foundDate = formatDate(element.content);
+          if (foundDate) {
+            console.log(`📅 Found date in meta tag ${selector}: ${foundDate}`);
+            return { date: foundDate, source: 'meta' };
+          }
+        }
+      }
+
+      // 2. Check time elements
+      const timeElements = document.getElementsByTagName('time');
+      for (const timeEl of timeElements) {
+        const datetime = timeEl.getAttribute('datetime');
+        if (datetime) {
+          foundDate = formatDate(datetime);
+          if (foundDate) {
+            // Basic check to see if it's likely a publish date (e.g. not in footer, near top)
+            // For now, accept the first valid time element as a good guess
+            console.log(`📅 Found date in <time> element: ${foundDate}`);
+            return { date: foundDate, source: 'time' };
+          }
+        }
+      }
+
+      // 3. Check JSON-LD data
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const script of scripts) {
+        try {
+          const data = JSON.parse(script.textContent);
+          // Helper to check object for date properties
+          const checkObj = (obj) => {
+            if (!obj) return null;
+            if (obj.datePublished) return obj.datePublished;
+            if (obj.dateCreated) return obj.dateCreated;
+            return null;
+          };
+
+          let dateStr = checkObj(data);
+
+          // Handle array of objects or graph
+          if (!dateStr && data['@graph'] && Array.isArray(data['@graph'])) {
+            const article = data['@graph'].find(item => item['@type'] === 'Article' || item['@type'] === 'NewsArticle' || item['@type'] === 'BlogPosting');
+            if (article) {
+              dateStr = checkObj(article);
+            }
+          }
+
+          if (dateStr) {
+            foundDate = formatDate(dateStr);
+            if (foundDate) {
+              console.log(`📅 Found date in JSON-LD: ${foundDate}`);
+              return { date: foundDate, source: 'json-ld' };
+            }
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+
+      // 4. Regex search in body text (lower confidence, only look at first 2000 chars)
+      const dateRegexes = [
+        /(\d{4})[/-](\d{1,2})[/-](\d{1,2})/, // 2023-01-30 or 2023/01/30
+        /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})/i, // 30 Jan 2023
+        /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i // Jan 30, 2023
+      ];
+
+      const bodyText = document.body.innerText.substring(0, 3000);
+
+      for (const regex of dateRegexes) {
+        const match = bodyText.match(regex);
+        if (match) {
+          // Try to parse the match
+          foundDate = formatDate(match[0]);
+          if (foundDate) {
+            console.log(`📅 Found date in text via regex: ${foundDate}`);
+            return { date: foundDate, source: 'text' };
+          }
+        }
+      }
+
+      console.log('📅 No date found on page.');
+      return { date: null, source: null };
+
+    } catch (error) {
+      console.error('Error finding date:', error);
+      return { error: error.message };
     }
   }
 
