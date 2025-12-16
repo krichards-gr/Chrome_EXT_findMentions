@@ -186,21 +186,29 @@
     }
 
     .sentiment-btn.selected {
-      transform: scale(0.95);
-      font-weight: bold;
+      transform: scale(1.05);
+      /* Slight pop */
+      font-weight: 800;
       color: white;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
     }
 
     .sentiment-positive.selected {
       background: #28a745;
+      border: 3px solid #1e7e34;
+      /* Darker green border */
     }
 
     .sentiment-neutral.selected {
       background: #ffc107;
+      border: 3px solid #d39e00;
+      /* Darker yellow border */
     }
 
     .sentiment-negative.selected {
       background: #dc3545;
+      border: 3px solid #bd2130;
+      /* Darker red border */
     }
 
     button:disabled {
