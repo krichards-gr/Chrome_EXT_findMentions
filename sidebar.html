@@ -186,29 +186,30 @@
     }
 
     .sentiment-btn.selected {
-      transform: scale(1.05);
-      /* Slight pop */
-      font-weight: 800;
+      transform: scale(1.1);
+      font-weight: 900;
       color: white;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.2);
+      /* Outer ring */
+      z-index: 10;
     }
 
     .sentiment-positive.selected {
       background: #28a745;
-      border: 3px solid #1e7e34;
-      /* Darker green border */
+      border: 4px solid #145523;
+      /* Very thick dark green border */
     }
 
     .sentiment-neutral.selected {
       background: #ffc107;
-      border: 3px solid #d39e00;
-      /* Darker yellow border */
+      border: 4px solid #856404;
+      /* Very thick dark yellow border */
     }
 
     .sentiment-negative.selected {
       background: #dc3545;
-      border: 3px solid #bd2130;
-      /* Darker red border */
+      border: 4px solid #721c24;
+      /* Very thick dark red border */
     }
 
     button:disabled {
