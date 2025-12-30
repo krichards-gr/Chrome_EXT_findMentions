@@ -219,6 +219,9 @@ class CSVReviewer {
         // Auto-select if it looks very much like a topic, otherwise defaulted to empty by addEmpty=true
         option.selected = true;
       }
+      if (id === 'mapSubtopic' && (lowerOpt.includes('sub') || lowerOpt.includes('detail'))) {
+        option.selected = true;
+      }
     });
   }
 
@@ -441,7 +444,7 @@ class CSVReviewer {
     console.log('Topic hierarchy built:', this.topicHierarchy); // Debug log
   }
 
-  updateSubtopics() {
+  updateSubtopics(shouldSave = true) {
     const selectedTopic = document.getElementById('topicSelect').value;
     const subtopicSelect = document.getElementById('subtopicSelect');
 
@@ -464,7 +467,9 @@ class CSVReviewer {
       });
     }
 
-    this.saveTopicSelection();
+    if (shouldSave) {
+      this.saveTopicSelection();
+    }
   }
 
   saveDateSelection() {
@@ -1032,7 +1037,7 @@ class CSVReviewer {
 
     if (topic) {
       topicSelect.value = topic;
-      this.updateSubtopics();
+      this.updateSubtopics(false);
       topicSelect.style.backgroundColor = BG_FILLED;
 
       // Handle subtopic with delay for population
