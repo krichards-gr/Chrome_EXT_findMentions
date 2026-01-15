@@ -49,6 +49,13 @@ class CSVReviewer {
     // Add keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeyboard(e));
 
+    // Previous Entry button
+    document.getElementById('prevEntryBtn').addEventListener('click', () => this.goToPreviousEntry());
+
+    // Date input handlers
+    document.getElementById('dateInput').addEventListener('change', () => this.saveDateSelection());
+    document.getElementById('clearDateBtn').addEventListener('click', () => this.clearDate());
+
     // Close button
     document.getElementById('closeBtn').addEventListener('click', () => this.cleanExit());
   }
@@ -662,6 +669,15 @@ class CSVReviewer {
       } else {
         // No preloaded tab, load normally
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        if (!activeTab) {
+          console.error('No active tab found');
+          this.showStatus('processingStatus', '❌ No active tab found. Please ensure a tab is open.', 'warning');
+          this.isProcessing = false;
+          this.setProcessingState(false);
+          return;
+        }
+
         tab = activeTab;
 
         // Clean up any existing listeners for this tab first
@@ -956,6 +972,11 @@ class CSVReviewer {
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+    if (!tab) {
+      console.warn('No active tab for navigateMatch');
+      return;
+    }
+
     try {
       const results = await chrome.tabs.sendMessage(tab.id, {
         action: 'navigateMatch',
@@ -1145,6 +1166,11 @@ class CSVReviewer {
   async enforceTabLimits() {
     try {
       const allTabs = await chrome.tabs.query({ currentWindow: true });
+
+      if (!allTabs || allTabs.length === 0) {
+        console.warn('No tabs found in enforceTabLimits');
+        return;
+      }
       const ourTabs = [];
 
       // Identify our preloaded tabs
@@ -1178,6 +1204,11 @@ class CSVReviewer {
     // Check total tab count first (emergency brake)
     try {
       const allTabs = await chrome.tabs.query({ currentWindow: true });
+
+      if (!allTabs) {
+        console.warn('Cannot check tab count, skipping preload');
+        return;
+      }
       if (allTabs.length > this.maxTotalTabs) {
         console.warn(`⚠️ Too many tabs (${allTabs.length}), skipping preload`);
         return;
