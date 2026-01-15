@@ -706,6 +706,29 @@
     </div>
   </div>
 
+  <!-- Debug Console -->
+  <div class="section"
+    style="position: sticky; bottom: 0; max-height: 200px; background: #1e1e1e; border-top: 2px solid var(--primary-teal); margin: 0 -15px -15px; padding: 10px 15px; border-radius: 0;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <h3 style="margin: 0; color: var(--primary-teal); font-size: 14px; border: none; padding: 0;">🐛 Debug Console
+      </h3>
+      <button id="clearConsole"
+        style="width: auto; padding: 4px 12px; font-size: 11px; margin: 0; background: #333; color: white; border: 1px solid #555;">Clear</button>
+    </div>
+    <div id="debugConsole" style="
+      height: 150px; 
+      overflow-y: auto; 
+      background: #0d0d0d; 
+      padding: 8px; 
+      border-radius: 4px; 
+      font-family: 'Courier New', monospace; 
+      font-size: 11px; 
+      line-height: 1.4;
+      color: #00ff00;
+      border: 1px solid #333;
+    "></div>
+  </div>
+
   <script src="lib/xlsx.full.min.js"></script>
   <script src="sidebar.js"></script>
 </body>

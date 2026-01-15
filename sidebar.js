@@ -15,12 +15,91 @@ class CSVReviewer {
     this.preloadTimeout = 60000; // 1 minute timeout
     this.maxTotalTabs = 10; // Emergency brake
 
+    // Initialize debug console first
+    this.initializeDebugConsole();
+
     this.initializeEventListeners();
     this.loadState();
     this.updateStepIndicators();
 
     // Periodic safety check every 30 seconds
     setInterval(() => this.enforceTabLimits(), 30000);
+
+    this.debug('✅ CSVReviewer initialized');
+  }
+
+  initializeDebugConsole() {
+    // Store original console methods
+    this.originalConsole = {
+      log: console.log,
+      error: console.error,
+      warn: console.warn,
+      info: console.info
+    };
+
+    // Intercept console methods
+    const debugConsole = document.getElementById('debugConsole');
+    if (!debugConsole) {
+      // Console element not ready yet, will retry
+      setTimeout(() => this.initializeDebugConsole(), 100);
+      return;
+    }
+
+    // Clear button
+    document.getElementById('clearConsole').addEventListener('click', () => {
+      debugConsole.innerHTML = '';
+      this.debug('🧹 Console cleared');
+    });
+
+    // Override console methods
+    const addLog = (level, color, args) => {
+      const timestamp = new Date().toLocaleTimeString();
+      const message = Array.from(args).map(arg =>
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+
+      const logEntry = document.createElement('div');
+      logEntry.style.color = color;
+      logEntry.style.marginBottom = '2px';
+      logEntry.textContent = `[${timestamp}] ${level}: ${message}`;
+
+      debugConsole.appendChild(logEntry);
+      debugConsole.scrollTop = debugConsole.scrollHeight; // Auto-scroll
+
+      // Keep only last 100 entries
+      while (debugConsole.children.length > 100) {
+        debugConsole.removeChild(debugConsole.firstChild);
+      }
+    };
+
+    console.log = (...args) => {
+      this.originalConsole.log(...args);
+      addLog('LOG', '#00ff00', args);
+    };
+
+    console.error = (...args) => {
+      this.originalConsole.error(...args);
+      addLog('ERROR', '#ff0000', args);
+    };
+
+    console.warn = (...args) => {
+      this.originalConsole.warn(...args);
+      addLog('WARN', '#ffaa00', args);
+    };
+
+    console.info = (...args) => {
+      this.originalConsole.info(...args);
+      addLog('INFO', '#00aaff', args);
+    };
+  }
+
+  // Helper for debug messages
+  debug(message, data = null) {
+    if (data) {
+      console.log(`🐛 ${message}`, data);
+    } else {
+      console.log(`🐛 ${message}`);
+    }
   }
 
   initializeEventListeners() {
@@ -621,7 +700,10 @@ class CSVReviewer {
   }
 
   async processCurrentEntry() {
+    this.debug(`📍 processCurrentEntry called - Index: ${this.currentIndex}/${this.csvData.length}`);
+
     if (this.currentIndex >= this.csvData.length) {
+      this.debug('✅ All entries processed');
       this.showStatus('processingStatus', '🎉 All entries processed!', 'success');
       this.updateStepIndicators();
       return;
@@ -630,6 +712,7 @@ class CSVReviewer {
     const entry = this.csvData[this.currentIndex];
     const link = entry.link;
     const corporation = entry.corporation;
+    this.debug(`Processing: ${corporation} - ${link}`);
 
     if (!link || !corporation) {
       this.showStatus('processingStatus', '⚠️ Invalid entry - missing link or corporation', 'warning');
@@ -642,10 +725,12 @@ class CSVReviewer {
       let tab;
 
       if (preloadedTab) {
+        this.debug(`⚡ Using preloaded tab for: ${link}`);
         // Use the preloaded tab and activate it
         tab = preloadedTab;
         await chrome.tabs.update(tab.id, { active: true });
         this.preloadedTabs.delete(link); // Remove from preload cache
+        this.debug(`Removed ${link} from preload cache`);
 
         this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
         this.updateLoadingIndicator('loading', 'Searching...');
@@ -667,10 +752,12 @@ class CSVReviewer {
         }, 300); // Reduced from 500ms
 
       } else {
+        this.debug('📂 No preloaded tab, loading normally');
         // No preloaded tab, load normally
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
         if (!activeTab) {
+          this.debug('❌ ERROR: No active tab found');
           console.error('No active tab found');
           this.showStatus('processingStatus', '❌ No active tab found. Please ensure a tab is open.', 'warning');
           this.isProcessing = false;
@@ -1151,6 +1238,8 @@ class CSVReviewer {
 
   // Cleanup event listeners to prevent memory leaks
   cleanupEventListeners() {
+    this.debug(`🧹 cleanupEventListeners - Cleaning ${this.activeListeners.size} listeners`);
+
     for (const [tabId, listener] of this.activeListeners) {
       try {
         chrome.tabs.onUpdated.removeListener(listener);
@@ -1201,6 +1290,8 @@ class CSVReviewer {
   }
 
   async preloadNextPages() {
+    this.debug(`🔮 preloadNextPages called - Current preloaded: ${this.preloadedTabs.size}`);
+
     // Check total tab count first (emergency brake)
     try {
       const allTabs = await chrome.tabs.query({ currentWindow: true });
@@ -1269,13 +1360,19 @@ class CSVReviewer {
   }
 
   async tagEntry(tag) {
-    if (this.isProcessing) return;
+    this.debug(`🏷️ tagEntry called: ${tag} for entry ${this.currentIndex + 1}`);
+
+    if (this.isProcessing) {
+      this.debug('⚠️ Already processing, ignoring tag request');
+      return;
+    }
 
     try {
       this.isProcessing = true;
       this.setProcessingState(true);
 
       this.csvData[this.currentIndex]['KEEP/DELETE'] = tag;
+      this.debug(`Saved tag: ${tag}`);
       await this.saveState();
 
       const emoji = tag === 'KEEP' ? '✅' : '❌';
