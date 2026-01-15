@@ -1198,7 +1198,8 @@ class CSVReviewer {
 
     const currentWindow = await chrome.windows.getCurrent();
 
-    for (let i = 1; i <= maxPreload; i++) {
+    // Use configured max preload limit
+    for (let i = 1; i <= this.maxPreloadedTabs; i++) {
       const nextIndex = this.currentIndex + i;
 
       if (nextIndex >= this.csvData.length) break; // No more entries to preload
