@@ -6,10 +6,21 @@ class CSVReviewer {
     this.currentIndex = 0;
     this.currentSentiment = '';
     this.preloadedTabs = new Map(); // Store preloaded tabs
+    this.activeListeners = new Map(); // Track active event listeners
     this.isProcessing = false; // Guard against race conditions
+    this.operationQueue = Promise.resolve(); // Queue for async operations
+
+    // Tab management configuration
+    this.maxPreloadedTabs = 2; // Strict limit
+    this.preloadTimeout = 60000; // 1 minute timeout
+    this.maxTotalTabs = 10; // Emergency brake
+
     this.initializeEventListeners();
     this.loadState();
     this.updateStepIndicators();
+
+    // Periodic safety check every 30 seconds
+    setInterval(() => this.enforceTabLimits(), 30000);
   }
 
   initializeEventListeners() {
@@ -653,13 +664,18 @@ class CSVReviewer {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
         tab = activeTab;
 
+        // Clean up any existing listeners for this tab first
+        this.cleanupEventListeners();
+
         // Navigate to the link
         await chrome.tabs.update(tab.id, { url: link });
 
         // Wait for page to load, then inject content script
         const loadHandler = async (tabId, changeInfo) => {
           if (tabId === tab.id && changeInfo.status === 'complete') {
+            // Remove listener immediately after use
             chrome.tabs.onUpdated.removeListener(loadHandler);
+            this.activeListeners.delete(tab.id);
 
             this.updateLoadingIndicator('loading', 'Searching...');
 
@@ -681,6 +697,8 @@ class CSVReviewer {
           }
         };
 
+        // Track listener for cleanup
+        this.activeListeners.set(tab.id, loadHandler);
         chrome.tabs.onUpdated.addListener(loadHandler);
         this.showStatus('processingStatus', `🔄 Loading: ${this.truncateUrl(link)}`, 'info');
         this.updateLoadingIndicator('loading', 'Loading page...');
@@ -1110,8 +1128,74 @@ class CSVReviewer {
     }
   }
 
+  // Cleanup event listeners to prevent memory leaks
+  cleanupEventListeners() {
+    for (const [tabId, listener] of this.activeListeners) {
+      try {
+        chrome.tabs.onUpdated.removeListener(listener);
+        console.log(`✓ Cleaned up listener for tab ${tabId}`);
+      } catch (error) {
+        console.log(`⚠️ Error cleaning listener for tab ${tabId}:`, error);
+      }
+    }
+    this.activeListeners.clear();
+  }
+
+  // Enforce tab limits to prevent browser freezes
+  async enforceTabLimits() {
+    try {
+      const allTabs = await chrome.tabs.query({ currentWindow: true });
+      const ourTabs = [];
+
+      // Identify our preloaded tabs
+      for (const tab of allTabs) {
+        for (const [link, preloadedTab] of this.preloadedTabs) {
+          if (tab.id === preloadedTab.id) {
+            ourTabs.push(tab);
+            break;
+          }
+        }
+      }
+
+      // If we have too many, force cleanup
+      if (ourTabs.length > this.maxPreloadedTabs) {
+        console.error(`⚠️ Emergency cleanup: ${ourTabs.length} preloaded tabs found`);
+        await this.cleanupAllPreloadedTabs();
+      }
+
+      // Emergency brake for total tabs
+      if (allTabs.length > this.maxTotalTabs) {
+        console.error(`⚠️ Too many total tabs: ${allTabs.length}`);
+        this.showStatus('processingStatus',
+          `⚠️ Too many tabs open (${allTabs.length}). Extension pausing preload.`, 'warning');
+      }
+    } catch (error) {
+      console.error('Error in enforceTabLimits:', error);
+    }
+  }
+
   async preloadNextPages() {
-    const maxPreload = 2; // Preload next 2 pages
+    // Check total tab count first (emergency brake)
+    try {
+      const allTabs = await chrome.tabs.query({ currentWindow: true });
+      if (allTabs.length > this.maxTotalTabs) {
+        console.warn(`⚠️ Too many tabs (${allTabs.length}), skipping preload`);
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking tab count:', error);
+      return;
+    }
+
+    // Cleanup before creating new
+    await this.cleanupUnusedPreloadedTabs();
+
+    // Enforce strict limit
+    if (this.preloadedTabs.size >= this.maxPreloadedTabs) {
+      console.log('Preload limit reached, skipping');
+      return;
+    }
+
     const currentWindow = await chrome.windows.getCurrent();
 
     for (let i = 1; i <= maxPreload; i++) {
@@ -1144,7 +1228,7 @@ class CSVReviewer {
             this.preloadedTabs.delete(nextLink);
             console.log(`Auto-cleaned unused preload: ${this.truncateUrl(nextLink)}`);
           }
-        }, 180000); // 3 minute cleanup timeout (reduced from 5)
+        }, this.preloadTimeout); // Use configured timeout (1 minute)
 
       } catch (error) {
         console.error(`Failed to preload page ${i}:`, error);
@@ -1225,15 +1309,27 @@ class CSVReviewer {
     }
   }
 
-  cleanupUnusedPreloadedTabs() {
-    // Remove preloaded tabs that we've passed (won't be used)
+  async cleanupUnusedPreloadedTabs() {
+    const toRemove = [];
+
     for (const [link, tab] of this.preloadedTabs.entries()) {
       // If this preloaded tab is for a URL we've already processed, clean it up
       const linkIndex = this.csvData.findIndex(entry => entry.link === link);
       if (linkIndex !== -1 && linkIndex < this.currentIndex) {
-        chrome.tabs.remove(tab.id).catch(() => { }); // Remove tab
+        toRemove.push({ link, tab });
+      }
+    }
+
+    // Remove in batch
+    for (const { link, tab } of toRemove) {
+      try {
+        await chrome.tabs.remove(tab.id);
         this.preloadedTabs.delete(link);
-        console.log(`Cleaned up unused preloaded tab: ${this.truncateUrl(link)}`);
+        console.log(`✓ Cleaned up unused preload: ${this.truncateUrl(link)}`);
+      } catch (error) {
+        // Tab might already be closed, still remove from map
+        this.preloadedTabs.delete(link);
+        console.log(`⚠️ Tab already closed: ${link}`);
       }
     }
   }
@@ -1430,15 +1526,48 @@ Are you sure you want to continue?`);
 
   async saveState() {
     try {
-      await chrome.storage.local.set({
+      // Check storage quota before saving
+      if (chrome.storage.local.QUOTA_BYTES) {
+        const usage = await chrome.storage.local.getBytesInUse();
+        const quota = chrome.storage.local.QUOTA_BYTES;
+        const usagePercent = (usage / quota) * 100;
+
+        if (usagePercent > 80) {
+          console.warn(`⚠️ Storage usage at ${usagePercent.toFixed(1)}%`);
+          this.showStatus('processingStatus',
+            `⚠️ Storage almost full (${usagePercent.toFixed(0)}%). Consider downloading data.`,
+            'warning');
+        }
+
+        if (usagePercent > 95) {
+          console.error('Storage quota nearly exhausted');
+          this.showStatus('processingStatus',
+            '❌ Storage full! Download data and clear to continue.',
+            'warning');
+          return;
+        }
+      }
+
+      // Save with compression for large datasets
+      const stateData = {
         csvData: this.csvData,
         topicData: this.topicData,
         topicHierarchy: this.topicHierarchy,
         variationsMap: this.variationsMap,
         currentIndex: this.currentIndex
-      });
+      };
+
+      await chrome.storage.local.set(stateData);
+
     } catch (error) {
-      console.error('Error saving state:', error);
+      if (error.message && error.message.includes('QUOTA_BYTES')) {
+        console.error('Storage quota exceeded');
+        this.showStatus('processingStatus',
+          '❌ Storage full! Download your data and use "Clear All Data" to continue.',
+          'warning');
+      } else {
+        console.error('Error saving state:', error);
+      }
     }
   }
 
@@ -1495,16 +1624,28 @@ Are you sure you want to continue?`);
   }
 }
 
-// Initialize when sidebar opens
+// Single global instance to prevent conflicts
+let csvReviewerInstance = null;
+
+// Initialize once when sidebar loads
 document.addEventListener('DOMContentLoaded', () => {
-  new CSVReviewer();
+  if (!csvReviewerInstance) {
+    csvReviewerInstance = new CSVReviewer();
+    console.log('✓ CSVReviewer initialized');
+  } else {
+    console.warn('CSVReviewer already initialized, skipping');
+  }
 });
 
-// Handle sidebar opening/closing
+// Handle sidebar opening/closing without creating new instance
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'sidebarOpened') {
-    // Refresh data when sidebar is opened
-    const reviewer = new CSVReviewer();
+    // Just refresh data from existing instance
+    if (csvReviewerInstance) {
+      csvReviewerInstance.loadState();
+      console.log('✓ Refreshed sidebar data');
+    }
     sendResponse({ success: true });
   }
+  return true;
 });
