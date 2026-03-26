@@ -9,6 +9,7 @@ class CSVReviewer {
     this.isProcessing = false; // Guard against race conditions
     this.selectedCompanies = []; // Companies selected for entries with no corporation
     this._skipCount = 0; // Used to skip past duplicate rows after multi-company tagging
+    this.detectedCompanies = []; // Companies detected on page when no company assigned
     // Column name mapping — detected from the loaded file's headers
     this.cols = {
       company: 'corporation',
@@ -634,7 +635,7 @@ class CSVReviewer {
         this.preloadedTabs.delete(link); // Remove from preload cache
 
         this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
-        this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'No company - select below');
+        this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
 
         // Small delay then search immediately (reduced delay for preloaded pages)
         setTimeout(async () => {
@@ -644,7 +645,7 @@ class CSVReviewer {
               const searchTerms = this.getSearchTermsForCompany(corporation);
               await this.searchAndHighlightMultiple(tab.id, searchTerms);
             } else {
-              this.updateMatchInfo(0, 0, '(no company assigned)');
+              await this.scanAndPreselectCompanies(tab.id);
               this.autoDetectDate(tab.id);
             }
             this.showReviewSection();
@@ -672,7 +673,7 @@ class CSVReviewer {
           if (tabId === tab.id && changeInfo.status === 'complete') {
             chrome.tabs.onUpdated.removeListener(loadHandler);
 
-            this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'No company - select below');
+            this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
 
             // Small delay to ensure page is fully loaded
             setTimeout(async () => {
@@ -682,7 +683,7 @@ class CSVReviewer {
                   const searchTerms = this.getSearchTermsForCompany(corporation);
                   await this.searchAndHighlightMultiple(tab.id, searchTerms);
                 } else {
-                  this.updateMatchInfo(0, 0, '(no company assigned)');
+                  await this.scanAndPreselectCompanies(tab.id);
                   this.autoDetectDate(tab.id);
                 }
                 this.showReviewSection();
@@ -735,6 +736,50 @@ class CSVReviewer {
         target: { tabId },
         files: ['content.css']
       });
+    }
+  }
+
+  // Build scan data for all known companies (used when no company is assigned)
+  buildAllCompanyScanData() {
+    const companies = this.getUniqueCompanies();
+    return companies.map(company => {
+      const regexInfo = this.generateCompanyRegexPattern(company);
+      return { name: company, pattern: regexInfo.pattern };
+    });
+  }
+
+  // Scan page for all companies, highlight matches, and store found companies for pre-selection
+  async scanAndPreselectCompanies(tabId) {
+    this.detectedCompanies = []; // Reset
+
+    const scanData = this.buildAllCompanyScanData();
+    if (scanData.length === 0) {
+      this.updateMatchInfo(0, 0, '(no companies to scan for)');
+      return;
+    }
+
+    this.updateLoadingIndicator('loading', 'Scanning for companies...');
+
+    try {
+      const results = await chrome.tabs.sendMessage(tabId, {
+        action: 'scanForCompanies',
+        companies: scanData
+      });
+
+      if (results && results.foundCompanies && results.foundCompanies.length > 0) {
+        this.detectedCompanies = results.foundCompanies;
+
+        this.updateMatchInfo(
+          results.matchCount,
+          results.currentMatch,
+          results.foundCompanies.join(' | ')
+        );
+      } else {
+        this.updateMatchInfo(0, 0, '(no company mentions found)');
+      }
+    } catch (error) {
+      console.error('Error scanning for companies:', error);
+      this.updateMatchInfo(0, 0, '(scan failed)');
     }
   }
 
@@ -1052,6 +1097,19 @@ class CSVReviewer {
     const companyControls = document.getElementById('companyControls');
     if (!(entry[this.cols.company] || '').trim()) {
       this.buildCompanyChecklist();
+
+      // Pre-check companies that were detected on the page
+      if (this.detectedCompanies && this.detectedCompanies.length > 0) {
+        const checkboxes = document.querySelectorAll('#companyChecklist input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+          if (this.detectedCompanies.includes(cb.value)) {
+            cb.checked = true;
+          }
+        });
+        this.updateCompanySelection();
+        this.detectedCompanies = []; // Clear after applying
+      }
+
       companyControls.style.display = 'block';
     } else {
       companyControls.style.display = 'none';

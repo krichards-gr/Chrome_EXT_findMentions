@@ -39,6 +39,11 @@ class PageSearcher {
           sendResponse(dateResult);
           break;
 
+        case 'scanForCompanies':
+          const scanResults = await this.scanForCompanies(request.companies);
+          sendResponse(scanResults);
+          break;
+
         case 'clearHighlights':
           this.clearHighlights();
           sendResponse({ success: true });
@@ -272,6 +277,103 @@ class PageSearcher {
       console.error('❌ REGEX SEARCH ERROR:', error);
       throw error;
     }
+  }
+
+  // Scan the page for all known companies and return which ones were found + highlight them
+  async scanForCompanies(companies) {
+    // companies = [{ name: "Apple", pattern: "\\b(?:Apple|AAPL)\\b" }, ...]
+    if (!companies || companies.length === 0) {
+      return { foundCompanies: [], matchCount: 0, currentMatch: 0 };
+    }
+
+    console.log(`🔍 Scanning page for ${companies.length} companies...`);
+
+    this.clearHighlights();
+    this.matches = [];
+
+    if (document.readyState !== 'complete') {
+      await new Promise(resolve => window.addEventListener('load', resolve));
+    }
+
+    // Build one combined regex with named-style groups to identify which company matched
+    // We use a mapping array: each alternative maps to a company name
+    const companyPatterns = [];
+    const patternToCompany = [];
+
+    for (const comp of companies) {
+      // Each company's pattern is a group; we track the group index
+      companyPatterns.push(`(${comp.pattern.replace(/^\\b\(\?:/, '(?:').replace(/\)\\b$/, ')')})`);
+      patternToCompany.push(comp.name);
+    }
+
+    // Combine all company patterns with word boundaries
+    const combinedPattern = companyPatterns.map(p => `\\b${p}\\b`).join('|');
+    const regex = new RegExp(combinedPattern, 'gi');
+
+    // Walk the DOM and find matches, tracking which company each match belongs to
+    const foundCompanySet = new Set();
+
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          if (node.parentNode && (node.parentNode.tagName === 'SCRIPT' || node.parentNode.tagName === 'STYLE')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (!node.textContent.trim()) {
+            return NodeFilter.FILTER_SKIP;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    let textNode;
+    while ((textNode = walker.nextNode())) {
+      const text = textNode.textContent;
+      let match;
+      regex.lastIndex = 0;
+
+      while ((match = regex.exec(text)) !== null) {
+        this.matches.push({
+          node: textNode,
+          startIndex: match.index,
+          endIndex: match.index + match[0].length,
+          matchedText: match[0]
+        });
+
+        // Figure out which capturing group matched to identify the company
+        for (let i = 1; i < match.length; i++) {
+          if (match[i] !== undefined) {
+            foundCompanySet.add(patternToCompany[i - 1]);
+            break;
+          }
+        }
+
+        if (match.index === regex.lastIndex) {
+          regex.lastIndex++;
+        }
+      }
+    }
+
+    // Highlight all matches
+    this.highlightMatches();
+
+    if (this.matches.length > 0) {
+      this.currentMatchIndex = 0;
+      this.scrollToCurrentMatch();
+    }
+
+    const foundCompanies = Array.from(foundCompanySet);
+    console.log(`🔍 Scan complete: found ${foundCompanies.length} companies with ${this.matches.length} total mentions`);
+    console.log(`🔍 Companies found:`, foundCompanies);
+
+    return {
+      foundCompanies,
+      matchCount: this.matches.length,
+      currentMatch: this.matches.length > 0 ? 1 : 0
+    };
   }
 
   // ========== OPTIMIZED SEARCH LOGIC (TreeWalker) ==========
