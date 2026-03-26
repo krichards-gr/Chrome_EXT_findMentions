@@ -154,7 +154,13 @@ class CSVReviewer {
       // Initialize missing columns with defaults
       this.csvData.forEach(row => {
         if (!row[this.cols.keepDelete]) row[this.cols.keepDelete] = '';
-        if (row[this.cols.sentiment] === undefined) row[this.cols.sentiment] = '';
+        if (row[this.cols.sentiment] === undefined) {
+          row[this.cols.sentiment] = '';
+        } else if (row[this.cols.sentiment]) {
+          // Normalize sentiment to title case (e.g. "positive" -> "Positive")
+          const s = row[this.cols.sentiment].trim();
+          row[this.cols.sentiment] = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+        }
         if (row[this.cols.topic] === undefined) row[this.cols.topic] = '';
         if (row[this.cols.subtopic] === undefined) row[this.cols.subtopic] = '';
         // Normalize date values
@@ -568,10 +574,11 @@ class CSVReviewer {
       return;
     }
 
-    // Find first unprocessed entry
-    let startIndex = this.csvData.findIndex(row => !row[this.cols.keepDelete]);
+    // Find first entry that isn't fully filled
+    let startIndex = this.csvData.findIndex(row => !this.isEntryFullyFilled(row));
     if (startIndex === -1) {
-      startIndex = 0; // If all processed, start from beginning
+      this.showStatus('processingStatus', '🎉 All entries are already complete!', 'success');
+      return;
     }
 
     this.currentIndex = startIndex;
@@ -579,7 +586,24 @@ class CSVReviewer {
     await this.processCurrentEntry();
   }
 
+  isEntryFullyFilled(entry) {
+    return !!(
+      entry[this.cols.keepDelete] &&
+      entry[this.cols.sentiment] &&
+      entry[this.cols.topic] &&
+      entry[this.cols.subtopic] &&
+      entry[this.cols.date] &&
+      (entry[this.cols.company] || '').trim()
+    );
+  }
+
   async processCurrentEntry() {
+    // Skip over records that already have all fields filled
+    while (this.currentIndex < this.csvData.length && this.isEntryFullyFilled(this.csvData[this.currentIndex])) {
+      console.log(`Skipping fully filled entry at index ${this.currentIndex}`);
+      this.currentIndex++;
+    }
+
     if (this.currentIndex >= this.csvData.length) {
       this.showStatus('processingStatus', '🎉 All entries processed!', 'success');
       this.updateStepIndicators();
@@ -830,7 +854,7 @@ class CSVReviewer {
   }
 
   updateProgressInfo() {
-    const processed = this.csvData.filter(row => row[this.cols.keepDelete]).length;
+    const processed = this.csvData.filter(row => this.isEntryFullyFilled(row)).length;
     const total = this.csvData.length;
     const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
 
@@ -1037,23 +1061,40 @@ class CSVReviewer {
     // Update the display
     this.updateCurrentEntryDisplay();
 
-    // Update sentiment buttons
+    // Update sentiment buttons (case-insensitive match)
     document.querySelectorAll('.sentiment-btn').forEach(btn => btn.classList.remove('selected'));
     if (sentiment) {
-      document.getElementById('sentiment' + sentiment)?.classList.add('selected');
+      const normalized = sentiment.charAt(0).toUpperCase() + sentiment.slice(1).toLowerCase();
+      document.getElementById('sentiment' + normalized)?.classList.add('selected');
     }
 
-    // Update topic dropdowns
+    // Update topic dropdowns (case-insensitive match against options)
+    const topicSelect = document.getElementById('topicSelect');
     if (topic) {
-      document.getElementById('topicSelect').value = topic;
+      const matchedTopic = Array.from(topicSelect.options).find(
+        opt => opt.value.toLowerCase() === topic.toLowerCase()
+      );
+      if (matchedTopic) {
+        topicSelect.value = matchedTopic.value;
+      } else {
+        topicSelect.value = topic; // Fallback to exact value
+      }
       this.updateSubtopics();
       setTimeout(() => {
         if (subtopic) {
-          document.getElementById('subtopicSelect').value = subtopic;
+          const subtopicSelect = document.getElementById('subtopicSelect');
+          const matchedSub = Array.from(subtopicSelect.options).find(
+            opt => opt.value.toLowerCase() === subtopic.toLowerCase()
+          );
+          if (matchedSub) {
+            subtopicSelect.value = matchedSub.value;
+          } else {
+            subtopicSelect.value = subtopic; // Fallback to exact value
+          }
         }
       }, 100); // Small delay to ensure subtopics are populated
     } else {
-      document.getElementById('topicSelect').value = '';
+      topicSelect.value = '';
       document.getElementById('subtopicSelect').innerHTML = '<option value="">Select Sub-topic...</option>';
     }
 
