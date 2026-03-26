@@ -7,6 +7,8 @@ class CSVReviewer {
     this.currentSentiment = '';
     this.preloadedTabs = new Map(); // Store preloaded tabs
     this.isProcessing = false; // Guard against race conditions
+    this.selectedCompanies = []; // Companies selected for entries with no corporation
+    this._skipCount = 0; // Used to skip past duplicate rows after multi-company tagging
     this.initializeEventListeners();
     this.loadState();
     this.updateStepIndicators();
@@ -100,33 +102,60 @@ class CSVReviewer {
     const file = fileInput.files[0];
 
     if (!file) {
-      this.showStatus('csvStatus', 'Please select a CSV file', 'warning');
+      this.showStatus('csvStatus', 'Please select a data file', 'warning');
       return;
     }
 
     try {
-      const text = await this.readFileAsText(file);
-      this.csvData = this.parseCSV(text);
+      const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+      if (isExcel) {
+        const arrayBuffer = await this.readFileAsArrayBuffer(file);
+        this.csvData = this.parseXLSX(arrayBuffer);
+      } else {
+        const text = await this.readFileAsText(file);
+        this.csvData = this.parseCSV(text);
+      }
 
       if (this.csvData.length === 0) {
         this.showStatus('csvStatus', 'CSV file is empty or invalid', 'warning');
         return;
       }
 
-      // Validate required columns
+      // Validate required columns (check header existence, not values)
+      // Support both "corporation" and "company" column names
       const firstRow = this.csvData[0];
-      if (!firstRow.corporation || !firstRow.link) {
-        this.showStatus('csvStatus', 'CSV must have "corporation" and "link" columns', 'warning');
+      const hasCompanyCol = ('corporation' in firstRow) || ('company' in firstRow);
+      if (!hasCompanyCol || !('link' in firstRow)) {
+        this.showStatus('csvStatus', 'CSV must have "corporation" (or "company") and "link" columns', 'warning');
         return;
       }
 
-      // Add new columns if not present
+      // Normalize column names and add new columns if not present
       this.csvData.forEach(row => {
+        // Map "company" → "corporation" if needed
+        if (!('corporation' in row) && ('company' in row)) {
+          row.corporation = row.company;
+        }
+        // Map existing sentiment/topic/date columns (case-insensitive variants)
         if (!row['KEEP/DELETE']) row['KEEP/DELETE'] = '';
-        if (!row['Sentiment']) row['Sentiment'] = '';
-        if (!row['Topic']) row['Topic'] = '';
-        if (!row['Sub-topic']) row['Sub-topic'] = '';
-        if (!row['Date']) row['Date'] = '';
+        if (!row['Sentiment']) row['Sentiment'] = row.sentiment || '';
+        if (!row['Topic']) row['Topic'] = row.topic || '';
+        if (!row['Sub-topic']) row['Sub-topic'] = row['sub_topic'] || row.sub_topic || '';
+        if (!row['Date']) {
+          // Parse date from data if present
+          const rawDate = row.date || '';
+          if (rawDate) {
+            const d = new Date(rawDate);
+            if (!isNaN(d.getTime())) {
+              row['Date'] = d.toISOString().split('T')[0];
+            } else {
+              row['Date'] = rawDate;
+            }
+          } else {
+            row['Date'] = '';
+          }
+        }
       });
 
       await this.saveState();
@@ -310,6 +339,57 @@ class CSVReviewer {
     console.log('Topic hierarchy built:', this.topicHierarchy); // Debug log
   }
 
+  getUniqueCompanies() {
+    const companies = new Set();
+    this.csvData.forEach(row => {
+      const corp = (row.corporation || '').trim();
+      if (corp) companies.add(corp);
+    });
+    return Array.from(companies).sort();
+  }
+
+  buildCompanyChecklist() {
+    const checklist = document.getElementById('companyChecklist');
+    checklist.innerHTML = '';
+    this.selectedCompanies = [];
+
+    const companies = this.getUniqueCompanies();
+    companies.forEach(company => {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = company;
+      checkbox.addEventListener('change', () => this.updateCompanySelection());
+
+      const span = document.createElement('span');
+      span.textContent = company;
+
+      label.appendChild(checkbox);
+      label.appendChild(span);
+      checklist.appendChild(label);
+    });
+  }
+
+  updateCompanySelection() {
+    const checkboxes = document.querySelectorAll('#companyChecklist input[type="checkbox"]:checked');
+    this.selectedCompanies = Array.from(checkboxes).map(cb => cb.value);
+
+    const countEl = document.getElementById('companySelectedCount');
+    if (this.selectedCompanies.length === 0) {
+      countEl.textContent = 'No companies selected';
+      countEl.style.color = '#e53e3e';
+    } else {
+      countEl.textContent = `${this.selectedCompanies.length} company(ies) selected: ${this.selectedCompanies.join(', ')}`;
+      countEl.style.color = '#276749';
+    }
+
+    // Save first selected company as the corporation for search purposes
+    if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
+      this.csvData[this.currentIndex].corporation = this.selectedCompanies[0] || '';
+      this.updateCurrentEntryDisplay();
+    }
+  }
+
   updateSubtopics() {
     const selectedTopic = document.getElementById('topicSelect').value;
     const subtopicSelect = document.getElementById('subtopicSelect');
@@ -406,6 +486,25 @@ class CSVReviewer {
     });
   }
 
+  readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  parseXLSX(arrayBuffer) {
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    // Use the first sheet
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    // Convert to array of objects (header row becomes keys)
+    const data = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    return data;
+  }
+
   parseCSV(text) {
     const lines = text.split('\n').filter(line => line.trim());
     if (lines.length < 2) return [];
@@ -477,10 +576,13 @@ class CSVReviewer {
     const link = entry.link;
     const corporation = entry.corporation;
 
-    if (!link || !corporation) {
-      this.showStatus('processingStatus', '⚠️ Invalid entry - missing link or corporation', 'warning');
+    if (!link) {
+      this.showStatus('processingStatus', '⚠️ Invalid entry - missing link', 'warning');
       return;
     }
+
+    // If no corporation, still navigate to the page but skip searching
+    const hasCorporation = !!(corporation && corporation.trim());
 
     try {
       // Check if we have a preloaded tab for this URL
@@ -494,13 +596,18 @@ class CSVReviewer {
         this.preloadedTabs.delete(link); // Remove from preload cache
 
         this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
-        this.updateLoadingIndicator('loading', 'Searching...');
+        this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'No company - select below');
 
         // Small delay then search immediately (reduced delay for preloaded pages)
         setTimeout(async () => {
           try {
-            const searchTerms = this.getSearchTermsForCompany(corporation);
-            await this.searchAndHighlightMultiple(tab.id, searchTerms);
+            if (hasCorporation) {
+              const searchTerms = this.getSearchTermsForCompany(corporation);
+              await this.searchAndHighlightMultiple(tab.id, searchTerms);
+            } else {
+              this.updateMatchInfo(0, 0, '(no company assigned)');
+              this.autoDetectDate(tab.id);
+            }
             this.showReviewSection();
 
             // Start preloading next pages
@@ -525,13 +632,18 @@ class CSVReviewer {
           if (tabId === tab.id && changeInfo.status === 'complete') {
             chrome.tabs.onUpdated.removeListener(loadHandler);
 
-            this.updateLoadingIndicator('loading', 'Searching...');
+            this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'No company - select below');
 
             // Small delay to ensure page is fully loaded
             setTimeout(async () => {
               try {
-                const searchTerms = this.getSearchTermsForCompany(corporation);
-                await this.searchAndHighlightMultiple(tab.id, searchTerms);
+                if (hasCorporation) {
+                  const searchTerms = this.getSearchTermsForCompany(corporation);
+                  await this.searchAndHighlightMultiple(tab.id, searchTerms);
+                } else {
+                  this.updateMatchInfo(0, 0, '(no company assigned)');
+                  this.autoDetectDate(tab.id);
+                }
                 this.showReviewSection();
 
                 // Start preloading next pages
@@ -829,8 +941,14 @@ class CSVReviewer {
     const topicBadge = topic ? `📂 ${topic}${subtopic ? ` > ${subtopic}` : ''}` : '📂 No topic';
     const dateBadge = date ? `📅 ${date}` : '📅 No date';
 
+    const corpDisplay = (entry.corporation || '').trim()
+      ? entry.corporation
+      : (this.selectedCompanies.length > 0
+        ? `<span style="color: var(--primary-teal-dark); font-style: italic;">${this.selectedCompanies.join(', ')}</span>`
+        : '<span style="color: #e53e3e; font-style: italic;">⚠ No company — select below</span>');
+
     document.getElementById('currentEntry').innerHTML = `
-      <strong>Corporation:</strong> ${entry.corporation}<br>
+      <strong>Corporation:</strong> ${corpDisplay}<br>
       <strong>Link:</strong> <a href="${entry.link}" target="_blank">${this.truncateUrl(entry.link, 60)}</a><br>
       <strong>Status:</strong> <span style="font-weight: bold; color: ${this.getStatusColor(status)}">${statusBadge}</span><br>
       <strong>Sentiment:</strong> <span style="font-weight: bold; color: ${this.getSentimentColor(sentiment)}">${sentimentBadge}</span><br>
@@ -870,6 +988,16 @@ class CSVReviewer {
     const topic = entry['Topic'];
     const subtopic = entry['Sub-topic'];
     const date = entry['Date'];
+
+    // Show company selector if corporation is empty
+    const companyControls = document.getElementById('companyControls');
+    if (!(entry.corporation || '').trim()) {
+      this.buildCompanyChecklist();
+      companyControls.style.display = 'block';
+    } else {
+      companyControls.style.display = 'none';
+      this.selectedCompanies = [];
+    }
 
     // Update the display
     this.updateCurrentEntryDisplay();
@@ -995,7 +1123,33 @@ class CSVReviewer {
       this.isProcessing = true;
       this.setProcessingState(true);
 
-      this.csvData[this.currentIndex]['KEEP/DELETE'] = tag;
+      // Handle multi-company duplication
+      if (this.selectedCompanies.length > 1) {
+        const baseEntry = this.csvData[this.currentIndex];
+        baseEntry['KEEP/DELETE'] = tag;
+        baseEntry.corporation = this.selectedCompanies[0];
+
+        // Insert duplicate rows for additional companies right after current
+        const duplicates = [];
+        for (let i = 1; i < this.selectedCompanies.length; i++) {
+          const dup = { ...baseEntry, corporation: this.selectedCompanies[i] };
+          duplicates.push(dup);
+        }
+        this.csvData.splice(this.currentIndex + 1, 0, ...duplicates);
+        // Skip past the duplicates when advancing (they're already tagged)
+        this._skipCount = duplicates.length;
+        this.selectedCompanies = [];
+
+        console.log(`📋 Created ${duplicates.length} duplicate row(s) for additional companies`);
+      } else if (this.selectedCompanies.length === 1) {
+        // Single company selected for a no-corporation entry
+        this.csvData[this.currentIndex].corporation = this.selectedCompanies[0];
+        this.csvData[this.currentIndex]['KEEP/DELETE'] = tag;
+        this.selectedCompanies = [];
+      } else {
+        this.csvData[this.currentIndex]['KEEP/DELETE'] = tag;
+      }
+
       await this.saveState();
 
       const emoji = tag === 'KEEP' ? '✅' : '❌';
@@ -1013,8 +1167,10 @@ class CSVReviewer {
       // Clean up any unused preloaded tabs
       this.cleanupUnusedPreloadedTabs();
 
-      // Move to next entry
-      this.currentIndex++;
+      // Move to next entry (skip past any duplicates we just inserted)
+      const skip = this._skipCount || 0;
+      this._skipCount = 0;
+      this.currentIndex += 1 + skip;
 
       if (this.currentIndex < this.csvData.length) {
         // Close the current tab after a brief delay (let user see the tag feedback)
@@ -1194,6 +1350,9 @@ Are you sure you want to continue?`);
     // Hide sections
     document.getElementById('reviewSection').style.display = 'none';
     document.getElementById('topicControls').style.display = 'none';
+    document.getElementById('companyControls').style.display = 'none';
+    document.getElementById('companyChecklist').innerHTML = '';
+    this.selectedCompanies = [];
 
     // Clear sentiment selection
     document.querySelectorAll('.sentiment-btn').forEach(btn => {

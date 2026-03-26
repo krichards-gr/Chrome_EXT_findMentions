@@ -364,6 +364,54 @@
       margin: 15px 0;
     }
 
+    .company-controls {
+      margin: 15px 0;
+    }
+
+    .company-controls h4 {
+      margin: 0 0 8px 0;
+      color: var(--primary-slate);
+      font-size: 14px;
+    }
+
+    .company-checklist {
+      max-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      background: white;
+      padding: 6px;
+    }
+
+    .company-checklist label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+
+    .company-checklist label:hover {
+      background: #f7fafc;
+    }
+
+    .company-checklist input[type="checkbox"] {
+      accent-color: var(--primary-slate);
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .company-selected-count {
+      font-size: 12px;
+      color: #718096;
+      margin-top: 6px;
+      font-weight: 500;
+    }
+
     #dateInput {
       width: 100%;
       padding: 8px;
@@ -563,9 +611,9 @@
         <h3>Upload Files</h3>
 
         <div class="file-section">
-          <h4>📄 CSV Data File</h4>
-          <input type="file" id="csvFile" accept=".csv" />
-          <button id="loadCsv" class="secondary-btn">Load CSV</button>
+          <h4>📄 Data File</h4>
+          <input type="file" id="csvFile" accept=".csv,.xlsx,.xls" />
+          <button id="loadCsv" class="secondary-btn">Load Data</button>
           <div id="csvStatus"></div>
         </div>
 
@@ -615,6 +663,12 @@
           </div>
         </div>
 
+        <div class="company-controls" id="companyControls" style="display: none;">
+          <h4>🏢 Select Company(ies)</h4>
+          <div class="company-checklist" id="companyChecklist"></div>
+          <div class="company-selected-count" id="companySelectedCount">No companies selected</div>
+        </div>
+
         <div class="sentiment-controls">
           <h4>😊 Sentiment</h4>
           <button id="sentimentPositive" class="sentiment-btn sentiment-positive">👍 Positive</button>
@@ -661,6 +715,7 @@
     </div>
   </div>
 
+  <script src="lib/xlsx.full.min.js"></script>
   <script src="sidebar.js"></script>
 </body>
 
