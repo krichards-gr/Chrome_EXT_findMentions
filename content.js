@@ -44,6 +44,10 @@ class PageSearcher {
           sendResponse({ success: true });
           break;
 
+        case 'ping':
+          sendResponse({ ok: true });
+          break;
+
         default:
           sendResponse({ error: 'Unknown action' });
       }

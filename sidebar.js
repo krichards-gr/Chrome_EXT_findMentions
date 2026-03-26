@@ -9,6 +9,15 @@ class CSVReviewer {
     this.isProcessing = false; // Guard against race conditions
     this.selectedCompanies = []; // Companies selected for entries with no corporation
     this._skipCount = 0; // Used to skip past duplicate rows after multi-company tagging
+    // Column name mapping — detected from the loaded file's headers
+    this.cols = {
+      company: 'corporation',
+      sentiment: 'Sentiment',
+      topic: 'Topic',
+      subtopic: 'Sub-topic',
+      date: 'Date',
+      keepDelete: 'KEEP/DELETE'
+    };
     this.initializeEventListeners();
     this.loadState();
     this.updateStepIndicators();
@@ -122,38 +131,42 @@ class CSVReviewer {
         return;
       }
 
-      // Validate required columns (check header existence, not values)
-      // Support both "corporation" and "company" column names
+      // Detect original column names from the file's headers
       const firstRow = this.csvData[0];
-      const hasCompanyCol = ('corporation' in firstRow) || ('company' in firstRow);
-      if (!hasCompanyCol || !('link' in firstRow)) {
-        this.showStatus('csvStatus', 'CSV must have "corporation" (or "company") and "link" columns', 'warning');
+      const keys = Object.keys(firstRow);
+
+      // Company column
+      const companyCol = keys.find(k => k === 'company') || keys.find(k => k === 'corporation');
+      if (!companyCol || !('link' in firstRow)) {
+        this.showStatus('csvStatus', 'File must have "company" (or "corporation") and "link" columns', 'warning');
         return;
       }
+      this.cols.company = companyCol;
 
-      // Normalize column names and add new columns if not present
+      // Detect existing column names for sentiment, topic, subtopic, date
+      this.cols.sentiment = keys.find(k => k === 'sentiment') || keys.find(k => k === 'Sentiment') || 'Sentiment';
+      this.cols.topic = keys.find(k => k === 'topic') || keys.find(k => k === 'Topic') || 'Topic';
+      this.cols.subtopic = keys.find(k => k === 'sub_topic') || keys.find(k => k === 'Sub-topic') || keys.find(k => k === 'Subtopic') || 'Sub-topic';
+      this.cols.date = keys.find(k => k === 'date') || keys.find(k => k === 'Date') || 'Date';
+
+      console.log('Detected column mapping:', this.cols);
+
+      // Initialize missing columns with defaults
       this.csvData.forEach(row => {
-        // Map "company" → "corporation" if needed
-        if (!('corporation' in row) && ('company' in row)) {
-          row.corporation = row.company;
-        }
-        // Map existing sentiment/topic/date columns (case-insensitive variants)
-        if (!row['KEEP/DELETE']) row['KEEP/DELETE'] = '';
-        if (!row['Sentiment']) row['Sentiment'] = row.sentiment || '';
-        if (!row['Topic']) row['Topic'] = row.topic || '';
-        if (!row['Sub-topic']) row['Sub-topic'] = row['sub_topic'] || row.sub_topic || '';
-        if (!row['Date']) {
-          // Parse date from data if present
-          const rawDate = row.date || '';
+        if (!row[this.cols.keepDelete]) row[this.cols.keepDelete] = '';
+        if (row[this.cols.sentiment] === undefined) row[this.cols.sentiment] = '';
+        if (row[this.cols.topic] === undefined) row[this.cols.topic] = '';
+        if (row[this.cols.subtopic] === undefined) row[this.cols.subtopic] = '';
+        // Normalize date values
+        if (row[this.cols.date] === undefined) {
+          row[this.cols.date] = '';
+        } else {
+          const rawDate = row[this.cols.date];
           if (rawDate) {
             const d = new Date(rawDate);
             if (!isNaN(d.getTime())) {
-              row['Date'] = d.toISOString().split('T')[0];
-            } else {
-              row['Date'] = rawDate;
+              row[this.cols.date] = d.toISOString().split('T')[0];
             }
-          } else {
-            row['Date'] = '';
           }
         }
       });
@@ -341,8 +354,9 @@ class CSVReviewer {
 
   getUniqueCompanies() {
     const companies = new Set();
+    const col = this.cols.company;
     this.csvData.forEach(row => {
-      const corp = (row.corporation || '').trim();
+      const corp = (row[col] || '').trim();
       if (corp) companies.add(corp);
     });
     return Array.from(companies).sort();
@@ -383,9 +397,9 @@ class CSVReviewer {
       countEl.style.color = '#276749';
     }
 
-    // Save first selected company as the corporation for search purposes
+    // Save first selected company for search purposes
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
-      this.csvData[this.currentIndex].corporation = this.selectedCompanies[0] || '';
+      this.csvData[this.currentIndex][this.cols.company] = this.selectedCompanies[0] || '';
       this.updateCurrentEntryDisplay();
     }
   }
@@ -420,7 +434,7 @@ class CSVReviewer {
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
       const date = document.getElementById('dateInput').value;
 
-      this.csvData[this.currentIndex]['Date'] = date;
+      this.csvData[this.currentIndex][this.cols.date] = date;
       this.saveState();
 
       // Immediately update the display
@@ -433,7 +447,7 @@ class CSVReviewer {
   clearDate() {
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
       document.getElementById('dateInput').value = '';
-      this.csvData[this.currentIndex]['Date'] = '';
+      this.csvData[this.currentIndex][this.cols.date] = '';
       this.saveState();
 
       // Immediately update the display
@@ -448,8 +462,8 @@ class CSVReviewer {
       const topic = document.getElementById('topicSelect').value;
       const subtopic = document.getElementById('subtopicSelect').value;
 
-      this.csvData[this.currentIndex]['Topic'] = topic;
-      this.csvData[this.currentIndex]['Sub-topic'] = subtopic;
+      this.csvData[this.currentIndex][this.cols.topic] = topic;
+      this.csvData[this.currentIndex][this.cols.subtopic] = subtopic;
       this.saveState();
 
       // Immediately update the display
@@ -469,7 +483,7 @@ class CSVReviewer {
 
     // Save to current entry and update display immediately
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
-      this.csvData[this.currentIndex]['Sentiment'] = sentiment;
+      this.csvData[this.currentIndex][this.cols.sentiment] = sentiment;
       this.saveState();
 
       // Immediately update the display
@@ -555,7 +569,7 @@ class CSVReviewer {
     }
 
     // Find first unprocessed entry
-    let startIndex = this.csvData.findIndex(row => !row['KEEP/DELETE']);
+    let startIndex = this.csvData.findIndex(row => !row[this.cols.keepDelete]);
     if (startIndex === -1) {
       startIndex = 0; // If all processed, start from beginning
     }
@@ -574,7 +588,7 @@ class CSVReviewer {
 
     const entry = this.csvData[this.currentIndex];
     const link = entry.link;
-    const corporation = entry.corporation;
+    const corporation = entry[this.cols.company];
 
     if (!link) {
       this.showStatus('processingStatus', '⚠️ Invalid entry - missing link', 'warning');
@@ -601,6 +615,7 @@ class CSVReviewer {
         // Small delay then search immediately (reduced delay for preloaded pages)
         setTimeout(async () => {
           try {
+            await this.ensureContentScript(tab.id);
             if (hasCorporation) {
               const searchTerms = this.getSearchTermsForCompany(corporation);
               await this.searchAndHighlightMultiple(tab.id, searchTerms);
@@ -614,8 +629,9 @@ class CSVReviewer {
             this.preloadNextPages();
           } catch (error) {
             console.error('Error in searchAndHighlight:', error);
-            this.showStatus('processingStatus', '❌ Error searching page', 'warning');
+            this.showStatus('processingStatus', `❌ Error searching page: ${error.message}`, 'warning');
             this.updateLoadingIndicator('ready', 'Error - Try again');
+            this.showReviewSection(); // Still show review so UI isn't stuck
           }
         }, 300); // Reduced from 500ms
 
@@ -637,6 +653,7 @@ class CSVReviewer {
             // Small delay to ensure page is fully loaded
             setTimeout(async () => {
               try {
+                await this.ensureContentScript(tab.id);
                 if (hasCorporation) {
                   const searchTerms = this.getSearchTermsForCompany(corporation);
                   await this.searchAndHighlightMultiple(tab.id, searchTerms);
@@ -679,6 +696,24 @@ class CSVReviewer {
     return url.substring(0, maxLength) + '...';
   }
 
+  async ensureContentScript(tabId) {
+    try {
+      // Ping the content script to see if it's loaded
+      await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+    } catch (e) {
+      // Content script not loaded — inject it
+      console.log('Content script not found, injecting...');
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js']
+      });
+      await chrome.scripting.insertCSS({
+        target: { tabId },
+        files: ['content.css']
+      });
+    }
+  }
+
   // ========== SEARCH EXECUTION LOGIC - MAIN SEARCH ISSUE AREA ==========
   async searchAndHighlightMultiple(tabId, searchTerms) {
     try {
@@ -689,7 +724,7 @@ class CSVReviewer {
       // This often misses matches and doesn't find the best terms
 
       // NEW METHOD: Use regex pattern for comprehensive matching
-      const company = this.csvData[this.currentIndex].corporation;
+      const company = this.csvData[this.currentIndex][this.cols.company];
       const regexInfo = this.generateCompanyRegexPattern(company);
 
       console.log(`🔍 OLD METHOD: Would search for individual terms: ${searchTerms.join(', ')}`);
@@ -759,7 +794,7 @@ class CSVReviewer {
 
   async autoDetectDate(tabId) {
     // Only auto-detect if date is empty
-    if (this.csvData[this.currentIndex]['Date']) {
+    if (this.csvData[this.currentIndex][this.cols.date]) {
       console.log('📅 Date already set for this entry, skipping auto-detect');
       return;
     }
@@ -777,7 +812,7 @@ class CSVReviewer {
         document.getElementById('dateInput').value = result.date;
 
         // Save it effectively
-        this.csvData[this.currentIndex]['Date'] = result.date;
+        this.csvData[this.currentIndex][this.cols.date] = result.date;
         this.saveState();
 
         // Show a temporary visual cue?
@@ -795,7 +830,7 @@ class CSVReviewer {
   }
 
   updateProgressInfo() {
-    const processed = this.csvData.filter(row => row['KEEP/DELETE']).length;
+    const processed = this.csvData.filter(row => row[this.cols.keepDelete]).length;
     const total = this.csvData.length;
     const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
 
@@ -857,7 +892,7 @@ class CSVReviewer {
       this.showStatus('processingStatus', `⏪ Going back to entry ${this.currentIndex + 1}`, 'info');
 
       // Process the previous entry (this will load the page and show review section)
-      console.log(`🔙 Processing entry: ${this.csvData[this.currentIndex]?.corporation} - ${this.csvData[this.currentIndex]?.link}`);
+      console.log(`🔙 Processing entry: ${this.csvData[this.currentIndex]?.[this.cols.company]} - ${this.csvData[this.currentIndex]?.link}`);
 
       // processCurrentEntry will eventually call showReviewSection which unlocks UI
       await this.processCurrentEntry();
@@ -930,19 +965,19 @@ class CSVReviewer {
 
   updateCurrentEntryDisplay() {
     const entry = this.csvData[this.currentIndex];
-    const status = entry['KEEP/DELETE'];
-    const sentiment = entry['Sentiment'];
-    const topic = entry['Topic'];
-    const subtopic = entry['Sub-topic'];
-    const date = entry['Date'];
+    const status = entry[this.cols.keepDelete];
+    const sentiment = entry[this.cols.sentiment];
+    const topic = entry[this.cols.topic];
+    const subtopic = entry[this.cols.subtopic];
+    const date = entry[this.cols.date];
 
     const statusBadge = status === 'KEEP' ? '✅ KEEP' : status === 'DELETE' ? '❌ DELETE' : '⏳ Not reviewed';
     const sentimentBadge = sentiment ? `😊 ${sentiment}` : '😐 No sentiment';
     const topicBadge = topic ? `📂 ${topic}${subtopic ? ` > ${subtopic}` : ''}` : '📂 No topic';
     const dateBadge = date ? `📅 ${date}` : '📅 No date';
 
-    const corpDisplay = (entry.corporation || '').trim()
-      ? entry.corporation
+    const corpDisplay = (entry[this.cols.company] || '').trim()
+      ? entry[this.cols.company]
       : (this.selectedCompanies.length > 0
         ? `<span style="color: var(--primary-teal-dark); font-style: italic;">${this.selectedCompanies.join(', ')}</span>`
         : '<span style="color: #e53e3e; font-style: italic;">⚠ No company — select below</span>');
@@ -984,14 +1019,14 @@ class CSVReviewer {
 
   showReviewSection() {
     const entry = this.csvData[this.currentIndex];
-    const sentiment = entry['Sentiment'];
-    const topic = entry['Topic'];
-    const subtopic = entry['Sub-topic'];
-    const date = entry['Date'];
+    const sentiment = entry[this.cols.sentiment];
+    const topic = entry[this.cols.topic];
+    const subtopic = entry[this.cols.subtopic];
+    const date = entry[this.cols.date];
 
-    // Show company selector if corporation is empty
+    // Show company selector if company is empty
     const companyControls = document.getElementById('companyControls');
-    if (!(entry.corporation || '').trim()) {
+    if (!(entry[this.cols.company] || '').trim()) {
       this.buildCompanyChecklist();
       companyControls.style.display = 'block';
     } else {
@@ -1126,13 +1161,13 @@ class CSVReviewer {
       // Handle multi-company duplication
       if (this.selectedCompanies.length > 1) {
         const baseEntry = this.csvData[this.currentIndex];
-        baseEntry['KEEP/DELETE'] = tag;
-        baseEntry.corporation = this.selectedCompanies[0];
+        baseEntry[this.cols.keepDelete] = tag;
+        baseEntry[this.cols.company] = this.selectedCompanies[0];
 
         // Insert duplicate rows for additional companies right after current
         const duplicates = [];
         for (let i = 1; i < this.selectedCompanies.length; i++) {
-          const dup = { ...baseEntry, corporation: this.selectedCompanies[i] };
+          const dup = { ...baseEntry, [this.cols.company]: this.selectedCompanies[i] };
           duplicates.push(dup);
         }
         this.csvData.splice(this.currentIndex + 1, 0, ...duplicates);
@@ -1142,12 +1177,12 @@ class CSVReviewer {
 
         console.log(`📋 Created ${duplicates.length} duplicate row(s) for additional companies`);
       } else if (this.selectedCompanies.length === 1) {
-        // Single company selected for a no-corporation entry
-        this.csvData[this.currentIndex].corporation = this.selectedCompanies[0];
-        this.csvData[this.currentIndex]['KEEP/DELETE'] = tag;
+        // Single company selected for a no-company entry
+        this.csvData[this.currentIndex][this.cols.company] = this.selectedCompanies[0];
+        this.csvData[this.currentIndex][this.cols.keepDelete] = tag;
         this.selectedCompanies = [];
       } else {
-        this.csvData[this.currentIndex]['KEEP/DELETE'] = tag;
+        this.csvData[this.currentIndex][this.cols.keepDelete] = tag;
       }
 
       await this.saveState();
@@ -1390,7 +1425,8 @@ Are you sure you want to continue?`);
         topicData: this.topicData,
         topicHierarchy: this.topicHierarchy,
         variationsMap: this.variationsMap,
-        currentIndex: this.currentIndex
+        currentIndex: this.currentIndex,
+        cols: this.cols
       });
     } catch (error) {
       console.error('Error saving state:', error);
@@ -1400,8 +1436,12 @@ Are you sure you want to continue?`);
   async loadState() {
     try {
       const result = await chrome.storage.local.get([
-        'csvData', 'topicData', 'topicHierarchy', 'variationsMap', 'currentIndex'
+        'csvData', 'topicData', 'topicHierarchy', 'variationsMap', 'currentIndex', 'cols'
       ]);
+
+      if (result.cols) {
+        this.cols = result.cols;
+      }
 
       if (result.csvData) {
         this.csvData = result.csvData;
