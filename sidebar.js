@@ -48,6 +48,9 @@ class CSVReviewer {
     // Add keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeyboard(e));
 
+    // Scrape article button
+    document.getElementById('scrapeArticleBtn').addEventListener('click', () => this.scrapeArticle());
+
     // Close button
     document.getElementById('closeBtn').addEventListener('click', () => this.cleanExit());
   }
@@ -161,6 +164,7 @@ class CSVReviewer {
       this.cols.topic = keys.find(k => k === 'topic') || keys.find(k => k === 'Topic') || 'Topic';
       this.cols.subtopic = keys.find(k => k === 'sub_topic') || keys.find(k => k === 'Sub-topic') || keys.find(k => k === 'Subtopic') || 'Sub-topic';
       this.cols.date = keys.find(k => k === 'date') || keys.find(k => k === 'Date') || 'Date';
+      this.cols.content = keys.find(k => /^(content|full_text|article_text|body_text|text)$/i.test(k)) || 'content';
 
       console.log('Detected column mapping:', this.cols);
 
@@ -176,6 +180,7 @@ class CSVReviewer {
         }
         if (row[this.cols.topic] === undefined) row[this.cols.topic] = '';
         if (row[this.cols.subtopic] === undefined) row[this.cols.subtopic] = '';
+        if (row[this.cols.content] === undefined) row[this.cols.content] = '';
         // Normalize date values
         if (row[this.cols.date] === undefined) {
           row[this.cols.date] = '';
@@ -977,6 +982,38 @@ class CSVReviewer {
     }
   }
 
+  async scrapeArticle() {
+    try {
+      document.getElementById('scrapeArticleBtn').disabled = true;
+      document.getElementById('scrapeStatus').innerHTML =
+        '<span style="color: #718096; font-size: 12px;">Extracting article text...</span>';
+
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await this.ensureContentScript(tab.id);
+
+      const result = await chrome.tabs.sendMessage(tab.id, {
+        action: 'extractArticleText'
+      });
+
+      if (result && result.text && result.text.trim()) {
+        this.csvData[this.currentIndex][this.cols.content] = result.text.trim();
+        await this.saveState();
+
+        document.getElementById('scrapeControls').style.display = 'none';
+        this.showStatus('processingStatus', `📰 Extracted ${result.text.trim().length.toLocaleString()} chars of article text`, 'success');
+      } else {
+        document.getElementById('scrapeStatus').innerHTML =
+          '<span style="color: #e53e3e; font-size: 12px;">Could not extract article text from this page</span>';
+        document.getElementById('scrapeArticleBtn').disabled = false;
+      }
+    } catch (error) {
+      console.error('Error scraping article:', error);
+      document.getElementById('scrapeStatus').innerHTML =
+        `<span style="color: #e53e3e; font-size: 12px;">Error: ${error.message}</span>`;
+      document.getElementById('scrapeArticleBtn').disabled = false;
+    }
+  }
+
   updateProgressInfo() {
     const processed = this.csvData.filter(row => this.isEntryFullyFilled(row)).length;
     const total = this.csvData.length;
@@ -1194,6 +1231,12 @@ class CSVReviewer {
       companyControls.style.display = 'none';
       this.selectedCompanies = [];
     }
+
+    // Show scrape button only when content is empty
+    const scrapeControls = document.getElementById('scrapeControls');
+    const hasContent = (entry[this.cols.content] || '').trim();
+    scrapeControls.style.display = hasContent ? 'none' : 'block';
+    document.getElementById('scrapeStatus').innerHTML = '';
 
     // Update the display
     this.updateCurrentEntryDisplay();

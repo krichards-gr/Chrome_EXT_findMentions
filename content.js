@@ -44,6 +44,11 @@ class PageSearcher {
           sendResponse(scanResults);
           break;
 
+        case 'extractArticleText':
+          const articleResult = this.extractArticleText();
+          sendResponse(articleResult);
+          break;
+
         case 'clearHighlights':
           this.clearHighlights();
           sendResponse({ success: true });
@@ -178,6 +183,133 @@ class PageSearcher {
     } catch (error) {
       console.error('Error finding date:', error);
       return { error: error.message };
+    }
+  }
+
+  // ========== ARTICLE TEXT EXTRACTION ==========
+  extractArticleText() {
+    try {
+      console.log('📰 Extracting article text...');
+
+      // Tags that never contain article content
+      const JUNK_TAGS = new Set([
+        'SCRIPT', 'STYLE', 'NAV', 'HEADER', 'FOOTER', 'ASIDE', 'IFRAME',
+        'NOSCRIPT', 'SVG', 'FORM', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA',
+        'FIGURE', 'FIGCAPTION', 'VIDEO', 'AUDIO', 'CANVAS', 'IMG'
+      ]);
+
+      const JUNK_ROLES = new Set([
+        'navigation', 'banner', 'contentinfo', 'complementary',
+        'search', 'form', 'menu', 'menubar', 'toolbar'
+      ]);
+
+      const JUNK_CLASS_PATTERNS = /nav|menu|sidebar|widget|footer|header|breadcrumb|social|share|comment|related|recommend|newsletter|subscribe|signup|ad-|advert|promo|popup|modal|cookie|consent|banner/i;
+
+      // Helper: check if an element or its ancestors are junk
+      const isJunk = (el) => {
+        let node = el;
+        while (node && node !== document.body) {
+          if (JUNK_TAGS.has(node.tagName)) return true;
+          const role = node.getAttribute && node.getAttribute('role');
+          if (role && JUNK_ROLES.has(role)) return true;
+          const cls = (node.className || '').toString();
+          const id = (node.id || '');
+          if (JUNK_CLASS_PATTERNS.test(cls) || JUNK_CLASS_PATTERNS.test(id)) return true;
+          node = node.parentElement;
+        }
+        return false;
+      };
+
+      // Strategy 1: Look for well-known article containers
+      const articleSelectors = [
+        'article [class*="body"]', 'article [class*="content"]',
+        '[class*="article-body"]', '[class*="article-content"]',
+        '[class*="story-body"]', '[class*="story-content"]',
+        '[class*="post-body"]', '[class*="post-content"]',
+        '[class*="entry-content"]', '[itemprop="articleBody"]',
+        '[data-testid="article-body"]', '.article__body',
+        'article', '[role="article"]', 'main'
+      ];
+
+      let articleEl = null;
+      for (const selector of articleSelectors) {
+        const el = document.querySelector(selector);
+        if (el) {
+          // Verify it has meaningful text (at least 200 chars)
+          const text = el.innerText || '';
+          if (text.trim().length >= 200) {
+            articleEl = el;
+            console.log(`📰 Found article container via: ${selector}`);
+            break;
+          }
+        }
+      }
+
+      // Strategy 2: If no article container, score all block elements by paragraph density
+      if (!articleEl) {
+        console.log('📰 No article container found, using paragraph density scoring...');
+        let bestScore = 0;
+        const candidates = document.querySelectorAll('div, section, main');
+
+        for (const el of candidates) {
+          if (isJunk(el)) continue;
+          const paragraphs = el.querySelectorAll('p');
+          let score = 0;
+          for (const p of paragraphs) {
+            const pText = (p.innerText || '').trim();
+            // Reward paragraphs with substantial text
+            if (pText.length > 40) score += pText.length;
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            articleEl = el;
+          }
+        }
+      }
+
+      if (!articleEl) {
+        console.log('📰 Could not identify article content');
+        return { text: null };
+      }
+
+      // Extract clean text: collect only <p>, <h1>-<h6>, <li>, <blockquote> text
+      // that aren't inside junk containers
+      const contentTags = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE']);
+      const blocks = articleEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote');
+
+      const paragraphs = [];
+      for (const block of blocks) {
+        if (isJunk(block)) continue;
+        const text = (block.innerText || '').trim();
+        // Skip very short fragments (likely captions, labels, etc.)
+        if (text.length < 20 && !block.tagName.startsWith('H')) continue;
+        // Skip lines that look like link lists or navigation
+        const linkText = Array.from(block.querySelectorAll('a')).reduce((s, a) => s + (a.innerText || '').length, 0);
+        if (linkText > text.length * 0.7 && text.length > 30) continue;
+        paragraphs.push(text);
+      }
+
+      // If we got very little from content tags, fall back to innerText of the container
+      // but still clean it up
+      let finalText;
+      if (paragraphs.join('\n').length < 200) {
+        finalText = (articleEl.innerText || '').trim();
+      } else {
+        finalText = paragraphs.join('\n\n');
+      }
+
+      // Clean up excessive whitespace
+      finalText = finalText
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+
+      console.log(`📰 Extracted ${finalText.length} chars of article text`);
+      return { text: finalText };
+
+    } catch (error) {
+      console.error('Error extracting article text:', error);
+      return { text: null, error: error.message };
     }
   }
 
