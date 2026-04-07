@@ -614,6 +614,14 @@
           <h4>📄 Data File</h4>
           <input type="file" id="csvFile" accept=".csv,.xlsx,.xls" />
           <button id="loadCsv" class="secondary-btn">Load Data</button>
+          <div id="sheetSelectorContainer" style="display: none; margin: 10px 0; padding: 10px; border: 1px solid var(--primary-teal); border-radius: 4px; background: #f0f9f7;">
+            <h4 style="margin: 0 0 8px 0; color: var(--primary-slate); font-size: 13px;">Multiple sheets found — select one:</h4>
+            <select id="sheetSelect" style="margin-bottom: 8px;"></select>
+            <div style="display: flex; gap: 8px;">
+              <button id="sheetConfirmBtn" class="secondary-btn" style="flex: 1;">Load Sheet</button>
+              <button id="sheetCancelBtn" class="nav-btn" style="flex: 1; width: auto;">Cancel</button>
+            </div>
+          </div>
           <div id="csvStatus"></div>
         </div>
 

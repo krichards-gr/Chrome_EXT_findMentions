@@ -121,7 +121,19 @@ class CSVReviewer {
 
       if (isExcel) {
         const arrayBuffer = await this.readFileAsArrayBuffer(file);
-        this.csvData = this.parseXLSX(arrayBuffer);
+        const sheetNames = this.getXLSXSheetNames(arrayBuffer);
+
+        let selectedSheet = sheetNames[0];
+        if (sheetNames.length > 1) {
+          selectedSheet = await this.promptSheetSelection(sheetNames);
+          if (!selectedSheet) {
+            this.showStatus('csvStatus', 'Sheet selection cancelled', 'warning');
+            return;
+          }
+        }
+
+        this.csvData = this.parseXLSX(arrayBuffer, selectedSheet);
+        this.showStatus('csvStatus', `Loading sheet: "${selectedSheet}"...`, 'info');
       } else {
         const text = await this.readFileAsText(file);
         this.csvData = this.parseCSV(text);
@@ -216,7 +228,7 @@ class CSVReviewer {
 
       this.topicData = parsedData.map(row => ({
         topic: row.Topic || row.topic || '',
-        subtopic: row.Sub || row['Sub-topic'] || row.Subtopic || row.subtopic || ''
+        subtopic: row.Sub || row['Sub-topic'] || row.Subtopic || row.subtopic || row.sub || row['sub-topic'] || row['sub_topic'] || ''
       }));
 
       console.log('Loaded topic data:', this.topicData); // Debug log
@@ -516,14 +528,56 @@ class CSVReviewer {
     });
   }
 
-  parseXLSX(arrayBuffer) {
+  parseXLSX(arrayBuffer, selectedSheetName) {
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    // Use the first sheet
-    const sheetName = workbook.SheetNames[0];
+    const sheetName = selectedSheetName || workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     // Convert to array of objects (header row becomes keys)
     const data = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     return data;
+  }
+
+  getXLSXSheetNames(arrayBuffer) {
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    return workbook.SheetNames;
+  }
+
+  promptSheetSelection(sheetNames) {
+    return new Promise((resolve) => {
+      const container = document.getElementById('sheetSelectorContainer');
+      const select = document.getElementById('sheetSelect');
+      const confirmBtn = document.getElementById('sheetConfirmBtn');
+      const cancelBtn = document.getElementById('sheetCancelBtn');
+
+      // Populate options
+      select.innerHTML = '';
+      sheetNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+      });
+
+      container.style.display = 'block';
+
+      const cleanup = () => {
+        container.style.display = 'none';
+        confirmBtn.removeEventListener('click', onConfirm);
+        cancelBtn.removeEventListener('click', onCancel);
+      };
+
+      const onConfirm = () => {
+        cleanup();
+        resolve(select.value);
+      };
+      const onCancel = () => {
+        cleanup();
+        resolve(null);
+      };
+
+      confirmBtn.addEventListener('click', onConfirm);
+      cancelBtn.addEventListener('click', onCancel);
+    });
   }
 
   parseCSV(text) {
@@ -1210,6 +1264,8 @@ class CSVReviewer {
 
   async preloadNextPages() {
     const maxPreload = 2; // Preload next 2 pages
+    const maxConcurrentPreloads = 6; // Cap total preloaded tabs to avoid memory issues
+    if (this.preloadedTabs.size >= maxConcurrentPreloads) return;
     const currentWindow = await chrome.windows.getCurrent();
 
     for (let i = 1; i <= maxPreload; i++) {
@@ -1287,7 +1343,12 @@ class CSVReviewer {
       await this.saveState();
 
       const emoji = tag === 'KEEP' ? '✅' : '❌';
-      this.showStatus('processingStatus', `${emoji} Tagged as ${tag}`, 'success');
+      const dupCount = this._skipCount || 0;
+      if (dupCount > 0) {
+        this.showStatus('processingStatus', `${emoji} Tagged as ${tag} — created ${dupCount} duplicate row(s) for additional companies`, 'success');
+      } else {
+        this.showStatus('processingStatus', `${emoji} Tagged as ${tag}`, 'success');
+      }
 
       // Get the current tab before moving to next entry
       // Use catch to handle potential errors if tab is already gone
