@@ -378,6 +378,11 @@ class CSVReviewer {
       const corp = (row[col] || '').trim();
       if (corp) companies.add(corp);
     });
+    // Also include companies from the variations map so the checklist
+    // and page scan work even when no rows have a company value yet
+    if (this.variationsMap) {
+      Object.keys(this.variationsMap).forEach(company => companies.add(company));
+    }
     return Array.from(companies).sort();
   }
 
