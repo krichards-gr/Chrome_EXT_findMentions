@@ -164,7 +164,7 @@ class CSVReviewer {
       this.cols.topic = keys.find(k => k === 'topic') || keys.find(k => k === 'Topic') || 'Topic';
       this.cols.subtopic = keys.find(k => k === 'sub_topic') || keys.find(k => k === 'Sub-topic') || keys.find(k => k === 'Subtopic') || 'Sub-topic';
       this.cols.date = keys.find(k => k === 'date') || keys.find(k => k === 'Date') || 'Date';
-      this.cols.content = keys.find(k => /^(content|full_text|article_text|body_text|text)$/i.test(k)) || 'content';
+      this.cols.content = keys.find(k => /^(content|full[_ ]?text|article[_ ]?text|body[_ ]?text|text)$/i.test(k)) || null;
 
       console.log('Detected column mapping:', this.cols);
 
@@ -180,7 +180,7 @@ class CSVReviewer {
         }
         if (row[this.cols.topic] === undefined) row[this.cols.topic] = '';
         if (row[this.cols.subtopic] === undefined) row[this.cols.subtopic] = '';
-        if (row[this.cols.content] === undefined) row[this.cols.content] = '';
+        if (this.cols.content && row[this.cols.content] === undefined) row[this.cols.content] = '';
         // Normalize date values
         if (row[this.cols.date] === undefined) {
           row[this.cols.date] = '';
@@ -1232,11 +1232,16 @@ class CSVReviewer {
       this.selectedCompanies = [];
     }
 
-    // Show scrape button only when content is empty
+    // Show scrape button only when content column exists and is empty
     const scrapeControls = document.getElementById('scrapeControls');
-    const hasContent = (entry[this.cols.content] || '').trim();
-    scrapeControls.style.display = hasContent ? 'none' : 'block';
-    document.getElementById('scrapeStatus').innerHTML = '';
+    if (this.cols.content) {
+      const hasContent = (entry[this.cols.content] || '').trim();
+      scrapeControls.style.display = hasContent ? 'none' : 'block';
+      document.getElementById('scrapeStatus').innerHTML = '';
+      document.getElementById('scrapeArticleBtn').disabled = false;
+    } else {
+      scrapeControls.style.display = 'none';
+    }
 
     // Update the display
     this.updateCurrentEntryDisplay();
