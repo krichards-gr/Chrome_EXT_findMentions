@@ -915,10 +915,24 @@ class CSVReviewer {
     this.updateLoadingIndicator('ready', matchCount > 0 ? `Ready (${matchCount} matches)` : 'Ready (no matches)');
   }
 
+  isDateRecent(dateStr) {
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return false;
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      return date >= twoYearsAgo;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async autoDetectDate(tabId) {
-    // Only auto-detect if date is empty
-    if (this.csvData[this.currentIndex][this.cols.date]) {
-      console.log('📅 Date already set for this entry, skipping auto-detect');
+    const existingDate = this.csvData[this.currentIndex][this.cols.date];
+
+    // If the existing date is within the past two years, keep it and skip detection
+    if (existingDate && this.isDateRecent(existingDate)) {
+      console.log(`📅 Existing date ${existingDate} is recent, keeping it`);
       return;
     }
 
@@ -928,25 +942,31 @@ class CSVReviewer {
         action: 'scanForDate'
       });
 
-      if (result && result.date) {
-        console.log(`📅 Received date: ${result.date} from ${result.source}`);
+      let finalDate = '';
 
-        // Set the date input
-        document.getElementById('dateInput').value = result.date;
+      if (result && result.date && this.isDateRecent(result.date)) {
+        // Page has a recent date — use it
+        finalDate = result.date;
+        console.log(`📅 Using page-detected date: ${finalDate} (source: ${result.source})`);
+      } else if (existingDate) {
+        // Existing date is too old and page date is also old or missing — clear it
+        console.log(`📅 Existing date ${existingDate} is too old and no recent date found on page — clearing`);
+      }
 
-        // Save it effectively
-        this.csvData[this.currentIndex][this.cols.date] = result.date;
-        this.saveState();
+      // Update the date field (may be setting or clearing)
+      document.getElementById('dateInput').value = finalDate;
+      this.csvData[this.currentIndex][this.cols.date] = finalDate;
+      this.saveState();
 
-        // Show a temporary visual cue?
+      if (finalDate) {
         const dateInput = document.getElementById('dateInput');
-        dateInput.style.backgroundColor = '#e8f0fe'; // Light blue flash
+        dateInput.style.backgroundColor = '#e8f0fe';
         setTimeout(() => {
           dateInput.style.backgroundColor = 'white';
         }, 2000);
-
-        this.updateCurrentEntryDisplay();
       }
+
+      this.updateCurrentEntryDisplay();
     } catch (error) {
       console.log('Error auto-detecting date:', error);
     }
