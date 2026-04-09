@@ -48,6 +48,9 @@ class CSVReviewer {
     // Add keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeyboard(e));
 
+    // Next entry button
+    document.getElementById('nextEntryBtn').addEventListener('click', () => this.goToNextEntry());
+
     // Scrape article button
     document.getElementById('scrapeArticleBtn').addEventListener('click', () => this.scrapeArticle());
 
@@ -105,6 +108,13 @@ class CSVReviewer {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           this.goToPreviousEntry();
+        }
+        break;
+      case 'n':
+      case 'N':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          this.goToNextEntry();
         }
         break;
     }
@@ -1031,13 +1041,23 @@ class CSVReviewer {
   updatePreviousEntryButton() {
     const prevBtn = document.getElementById('prevEntryBtn');
     if (prevBtn) {
-      // Enable/disable based on whether we can go back
       if (this.currentIndex > 0) {
         prevBtn.disabled = false;
         prevBtn.textContent = `← Previous Entry (${this.currentIndex})`;
       } else {
         prevBtn.disabled = true;
         prevBtn.textContent = '← Previous Entry';
+      }
+    }
+
+    const nextBtn = document.getElementById('nextEntryBtn');
+    if (nextBtn) {
+      if (this.currentIndex < this.csvData.length - 1) {
+        nextBtn.disabled = false;
+        nextBtn.textContent = `Next Entry (${this.currentIndex + 2}) →`;
+      } else {
+        nextBtn.disabled = true;
+        nextBtn.textContent = 'Next Entry →';
       }
     }
   }
@@ -1076,11 +1096,11 @@ class CSVReviewer {
 
       this.showStatus('processingStatus', `⏪ Going back to entry ${this.currentIndex + 1}`, 'info');
 
-      // Process the previous entry (this will load the page and show review section)
+      // Process the previous entry (no skip — user explicitly wants to revisit)
       console.log(`🔙 Processing entry: ${this.csvData[this.currentIndex]?.[this.cols.company]} - ${this.csvData[this.currentIndex]?.link}`);
 
-      // processCurrentEntry will eventually call showReviewSection which unlocks UI
-      await this.processCurrentEntry();
+      // processCurrentEntryNoSkip will load the page and show review section without skipping filled entries
+      await this.processCurrentEntryNoSkip();
 
       // Close the tab we came from after a short delay
       if (currentTab) {
@@ -1096,6 +1116,160 @@ class CSVReviewer {
 
     } catch (error) {
       console.error('❌ Error going to previous entry:', error);
+      this.showStatus('processingStatus', `❌ Error: ${error.message}`, 'warning');
+      this.isProcessing = false;
+      this.setProcessingState(false);
+    }
+  }
+
+  async goToNextEntry() {
+    console.log(`🔜 goToNextEntry called. Current index: ${this.currentIndex}`);
+
+    if (this.isProcessing) return;
+    if (this.currentIndex >= this.csvData.length - 1) {
+      console.log(`⚠️ Cannot go forward - already at last entry`);
+      this.showStatus('processingStatus', '⚠️ Already at last entry', 'warning');
+      return;
+    }
+
+    try {
+      this.isProcessing = true;
+      this.setProcessingState(true);
+
+      console.log(`🔜 Going from entry ${this.currentIndex + 1} to entry ${this.currentIndex + 2}`);
+
+      // Clean up any preloaded tabs
+      this.cleanupUnusedPreloadedTabs();
+
+      // Get current tab to close it after loading next entry
+      let currentTab = null;
+      try {
+        [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      } catch (e) {
+        console.log('Error getting current tab:', e);
+      }
+
+      // Move to next entry (no skipping — user explicitly wants to navigate)
+      this.currentIndex++;
+
+      this.showStatus('processingStatus', `⏩ Going to entry ${this.currentIndex + 1}`, 'info');
+
+      // Process the next entry (this will load the page and show review section)
+      await this.processCurrentEntryNoSkip();
+
+      // Close the tab we came from after a short delay
+      if (currentTab) {
+        setTimeout(async () => {
+          try {
+            await chrome.tabs.remove(currentTab.id);
+          } catch (error) {
+            console.log('🔜 Previous tab may have already been closed:', error);
+          }
+        }, 1000);
+      }
+
+    } catch (error) {
+      console.error('❌ Error going to next entry:', error);
+      this.showStatus('processingStatus', `❌ Error: ${error.message}`, 'warning');
+      this.isProcessing = false;
+      this.setProcessingState(false);
+    }
+  }
+
+  // Like processCurrentEntry but does NOT skip fully-filled entries
+  async processCurrentEntryNoSkip() {
+    if (this.currentIndex >= this.csvData.length) {
+      this.showStatus('processingStatus', '🎉 All entries processed!', 'success');
+      this.updateStepIndicators();
+      return;
+    }
+
+    const entry = this.csvData[this.currentIndex];
+    const link = entry.link;
+    const corporation = entry[this.cols.company];
+
+    if (!link) {
+      this.showStatus('processingStatus', '⚠️ Invalid entry - missing link', 'warning');
+      this.isProcessing = false;
+      this.setProcessingState(false);
+      return;
+    }
+
+    const hasCorporation = !!(corporation && corporation.trim());
+
+    try {
+      const preloadedTab = this.preloadedTabs.get(link);
+      let tab;
+
+      if (preloadedTab) {
+        tab = preloadedTab;
+        await chrome.tabs.update(tab.id, { active: true });
+        this.preloadedTabs.delete(link);
+
+        this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
+        this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
+
+        setTimeout(async () => {
+          try {
+            await this.ensureContentScript(tab.id);
+            if (hasCorporation) {
+              const searchTerms = this.getSearchTermsForCompany(corporation);
+              await this.searchAndHighlightMultiple(tab.id, searchTerms);
+            } else {
+              await this.scanAndPreselectCompanies(tab.id);
+              this.autoDetectDate(tab.id);
+            }
+            this.showReviewSection();
+            this.preloadNextPages();
+          } catch (error) {
+            console.error('Error in searchAndHighlight:', error);
+            this.showStatus('processingStatus', `❌ Error searching page: ${error.message}`, 'warning');
+            this.updateLoadingIndicator('ready', 'Error - Try again');
+            this.showReviewSection();
+          }
+        }, 300);
+
+      } else {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        tab = activeTab;
+
+        await chrome.tabs.update(tab.id, { url: link });
+
+        const loadHandler = async (tabId, changeInfo) => {
+          if (tabId === tab.id && changeInfo.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(loadHandler);
+
+            this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
+
+            setTimeout(async () => {
+              try {
+                await this.ensureContentScript(tab.id);
+                if (hasCorporation) {
+                  const searchTerms = this.getSearchTermsForCompany(corporation);
+                  await this.searchAndHighlightMultiple(tab.id, searchTerms);
+                } else {
+                  await this.scanAndPreselectCompanies(tab.id);
+                  this.autoDetectDate(tab.id);
+                }
+                this.showReviewSection();
+                this.preloadNextPages();
+              } catch (error) {
+                console.error('Error in searchAndHighlight:', error);
+                this.showStatus('processingStatus', '❌ Error searching page', 'warning');
+                this.updateLoadingIndicator('ready', 'Error - Try again');
+              }
+            }, 1000);
+          }
+        };
+
+        chrome.tabs.onUpdated.addListener(loadHandler);
+        this.showStatus('processingStatus', `🔄 Loading: ${this.truncateUrl(link)}`, 'info');
+        this.updateLoadingIndicator('loading', 'Loading page...');
+      }
+
+      this.updateProgressInfo();
+
+    } catch (error) {
       this.showStatus('processingStatus', `❌ Error: ${error.message}`, 'warning');
       this.isProcessing = false;
       this.setProcessingState(false);
@@ -1300,7 +1474,7 @@ class CSVReviewer {
 
   setProcessingState(isProcessing) {
     const idsToToggle = [
-      'keepBtn', 'deleteBtn', 'prevEntryBtn',
+      'keepBtn', 'deleteBtn', 'prevEntryBtn', 'nextEntryBtn',
       'prevMatch', 'nextMatch', 'startProcessing',
       'sentimentPositive', 'sentimentNeutral', 'sentimentNegative'
     ];
@@ -1386,9 +1560,23 @@ class CSVReviewer {
       this.isProcessing = true;
       this.setProcessingState(true);
 
+      // Capture the latest UI values so duplicates always reflect current inputs
+      const currentSentiment = document.getElementById('sentimentPositive').classList.contains('selected') ? 'Positive'
+        : document.getElementById('sentimentNeutral').classList.contains('selected') ? 'Neutral'
+        : document.getElementById('sentimentNegative').classList.contains('selected') ? 'Negative' : '';
+      const currentTopic = document.getElementById('topicSelect').value;
+      const currentSubtopic = document.getElementById('subtopicSelect').value;
+      const currentDate = document.getElementById('dateInput').value;
+
+      // Write latest UI values into the base entry before duplicating
+      const baseEntry = this.csvData[this.currentIndex];
+      if (currentSentiment) baseEntry[this.cols.sentiment] = currentSentiment;
+      if (currentTopic) baseEntry[this.cols.topic] = currentTopic;
+      if (currentSubtopic) baseEntry[this.cols.subtopic] = currentSubtopic;
+      if (currentDate) baseEntry[this.cols.date] = currentDate;
+
       // Handle multi-company duplication
       if (this.selectedCompanies.length > 1) {
-        const baseEntry = this.csvData[this.currentIndex];
         baseEntry[this.cols.keepDelete] = tag;
         baseEntry[this.cols.company] = this.selectedCompanies[0];
 
