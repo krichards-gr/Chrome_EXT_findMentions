@@ -649,8 +649,20 @@ class CSVReviewer {
       return;
     }
 
-    // Find first entry that isn't fully filled
-    let startIndex = this.csvData.findIndex(row => !this.isEntryFullyFilled(row));
+    // Search forward from saved currentIndex for the next unfilled entry
+    let startIndex = -1;
+    for (let i = this.currentIndex; i < this.csvData.length; i++) {
+      if (!this.isEntryFullyFilled(this.csvData[i])) {
+        startIndex = i;
+        break;
+      }
+    }
+
+    if (startIndex === -1) {
+      // Nothing unfilled from currentIndex onward — check if there are any earlier gaps
+      startIndex = this.csvData.findIndex(row => !this.isEntryFullyFilled(row));
+    }
+
     if (startIndex === -1) {
       this.showStatus('processingStatus', '🎉 All entries are already complete!', 'success');
       return;
