@@ -649,28 +649,35 @@ class CSVReviewer {
       return;
     }
 
-    // Search forward from saved currentIndex for the next unfilled entry
+    // Resume = jump to the first record without a KEEP/DELETE label.
+    // A record with a KEEP/DELETE tag counts as "decided" even if other
+    // fields (sentiment, topic, date) were left blank.
     let startIndex = -1;
     for (let i = this.currentIndex; i < this.csvData.length; i++) {
-      if (!this.isEntryFullyFilled(this.csvData[i])) {
+      if (!this.hasKeepDeleteLabel(this.csvData[i])) {
         startIndex = i;
         break;
       }
     }
 
     if (startIndex === -1) {
-      // Nothing unfilled from currentIndex onward — check if there are any earlier gaps
-      startIndex = this.csvData.findIndex(row => !this.isEntryFullyFilled(row));
+      // Nothing undecided from currentIndex onward — check earlier gaps
+      startIndex = this.csvData.findIndex(row => !this.hasKeepDeleteLabel(row));
     }
 
     if (startIndex === -1) {
-      this.showStatus('processingStatus', '🎉 All entries are already complete!', 'success');
+      this.showStatus('processingStatus', '🎉 All entries are already labeled KEEP/DELETE!', 'success');
       return;
     }
 
     this.currentIndex = startIndex;
     this.updateStepIndicators();
     await this.processCurrentEntry();
+  }
+
+  hasKeepDeleteLabel(entry) {
+    const tag = entry[this.cols.keepDelete];
+    return !!(tag && String(tag).trim());
   }
 
   isEntryFullyFilled(entry) {
@@ -685,9 +692,9 @@ class CSVReviewer {
   }
 
   async processCurrentEntry() {
-    // Skip over records that already have all fields filled
-    while (this.currentIndex < this.csvData.length && this.isEntryFullyFilled(this.csvData[this.currentIndex])) {
-      console.log(`Skipping fully filled entry at index ${this.currentIndex}`);
+    // Skip over records that already have a KEEP/DELETE decision
+    while (this.currentIndex < this.csvData.length && this.hasKeepDeleteLabel(this.csvData[this.currentIndex])) {
+      console.log(`Skipping already-decided entry at index ${this.currentIndex}`);
       this.currentIndex++;
     }
 
@@ -1037,7 +1044,7 @@ class CSVReviewer {
   }
 
   updateProgressInfo() {
-    const processed = this.csvData.filter(row => this.isEntryFullyFilled(row)).length;
+    const processed = this.csvData.filter(row => this.hasKeepDeleteLabel(row)).length;
     const total = this.csvData.length;
     const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
 
