@@ -44,7 +44,7 @@ Johnson & Johnson,https://example.com/jnj-report
 4. **Review the highlighted matches** → company names are highlighted in yellow
 5. **Make your selections:**
    - **Sentiment** — 👍 Positive, 😐 Neutral, or 👎 Negative
-   - **Topic / Sub-topic** — if you uploaded a topics file
+   - **Topic / Sub-topic** — if you uploaded a topics file. Pick a Sub-topic from the dropdown, then edit the text field beneath it to customize any bracketed placeholder (e.g. `[Treatment/Product] Development` → `Stelara Development`). The edited text is what gets saved.
    - **Date** — optional date picker
    - **Company** — if a row has no corporation, checkboxes let you pick one or more
    - **Decision** — ✓ KEEP or ✗ DELETE
@@ -89,6 +89,7 @@ Technology,Product Launch
 ```
 - Adds **Topic / Sub-topic** dropdowns during review
 - Headers must be exactly `Topic` and `Sub`
+- **Archetype sub-topics with placeholders** (e.g. `TREATMENT_PRODUCT Development`, `LAWSUIT_FOCUS Lawsuit`) are surfaced as `[Treatment/Product] Development` / `[Lawsuit Focus] Lawsuit` in the editable field so you can replace the bracketed portion with a specific product, treatment, or lawsuit focus directly in the sidebar — no need to post-edit the CSV.
 
 ---
 
@@ -113,7 +114,7 @@ The sidebar has four main sections:
 - **Navigate matches** — ← / → jump between highlighted mentions
 - **Company selection** — when the row has no corporation, check one or more companies detected on the page; multiple selections create duplicate rows automatically
 - **Sentiment** — 👍 Positive, 😐 Neutral, 👎 Negative
-- **Topic / Sub-topic** dropdowns — when a topics file is loaded
+- **Topic / Sub-topic** dropdowns — when a topics file is loaded. An editable text field sits below the Sub-topic dropdown so you can replace placeholder tokens in archetype sub-topics (e.g. `TREATMENT_PRODUCT Development` is shown as `[Treatment/Product] Development` for easy editing into something like `Stelara Development`). The edited value is saved to the row instead of the raw archetype.
 - **Date** picker
 - **📰 Extract Article Text** — pulls clean body text from the current page into a `content` / article-text column
 - **Navigation controls**

@@ -42,8 +42,14 @@ class CSVReviewer {
     document.getElementById('sentimentNegative').addEventListener('click', () => this.setSentiment('Negative'));
 
     // Topic dropdowns
-    document.getElementById('topicSelect').addEventListener('change', () => this.updateSubtopics());
-    document.getElementById('subtopicSelect').addEventListener('change', () => this.saveTopicSelection());
+    document.getElementById('topicSelect').addEventListener('change', () => {
+      // User-initiated topic change — clear any previous sub-topic text so a stale
+      // edited value from the previous topic doesn't carry over.
+      document.getElementById('subtopicEdit').value = '';
+      this.updateSubtopics();
+    });
+    document.getElementById('subtopicSelect').addEventListener('change', () => this.onSubtopicDropdownChange());
+    document.getElementById('subtopicEdit').addEventListener('input', () => this.saveTopicSelection());
 
     // Add keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeyboard(e));
@@ -496,10 +502,30 @@ class CSVReviewer {
     }
   }
 
+  // Replace archetype tokens in a sub-topic with user-friendly bracketed placeholders
+  // so the editable part is obvious. E.g. "TREATMENT_PRODUCT Development" -> "[Treatment/Product] Development"
+  humanizeSubtopic(raw) {
+    if (!raw) return '';
+    return raw
+      .replace(/TREATMENT_PRODUCT/g, '[Treatment/Product]')
+      .replace(/LAWSUIT_FOCUS/g, '[Lawsuit Focus]');
+  }
+
+  onSubtopicDropdownChange() {
+    const selected = document.getElementById('subtopicSelect').value;
+    const editField = document.getElementById('subtopicEdit');
+    // Populate the edit field with the selected subtopic, converting placeholder tokens
+    // into bracketed text the user can easily find and replace.
+    editField.value = this.humanizeSubtopic(selected);
+    this.saveTopicSelection();
+  }
+
   saveTopicSelection() {
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
       const topic = document.getElementById('topicSelect').value;
-      const subtopic = document.getElementById('subtopicSelect').value;
+      // The edit field is the source of truth — it starts populated from the dropdown
+      // but the user can customize placeholders (e.g. [Treatment/Product] -> Stelara).
+      const subtopic = document.getElementById('subtopicEdit').value;
 
       this.csvData[this.currentIndex][this.cols.topic] = topic;
       this.csvData[this.currentIndex][this.cols.subtopic] = subtopic;
@@ -1457,23 +1483,36 @@ class CSVReviewer {
       } else {
         topicSelect.value = topic; // Fallback to exact value
       }
+      // Pre-populate the edit field with the saved sub-topic before updateSubtopics()
+      // fires saveTopicSelection(); otherwise the previous entry's edit value would
+      // briefly be written into the current row.
+      document.getElementById('subtopicEdit').value = subtopic || '';
       this.updateSubtopics();
       setTimeout(() => {
+        const subtopicSelect = document.getElementById('subtopicSelect');
+        const subtopicEdit = document.getElementById('subtopicEdit');
         if (subtopic) {
-          const subtopicSelect = document.getElementById('subtopicSelect');
+          // Try to match the stored (possibly already-edited) value to an archetype option.
+          // If it doesn't match, leave the dropdown at the placeholder — the edit field still shows the saved text.
           const matchedSub = Array.from(subtopicSelect.options).find(
-            opt => opt.value.toLowerCase() === subtopic.toLowerCase()
+            opt => opt.value.toLowerCase() === subtopic.toLowerCase() ||
+                   this.humanizeSubtopic(opt.value).toLowerCase() === subtopic.toLowerCase()
           );
           if (matchedSub) {
             subtopicSelect.value = matchedSub.value;
           } else {
-            subtopicSelect.value = subtopic; // Fallback to exact value
+            subtopicSelect.value = '';
           }
+          subtopicEdit.value = subtopic;
+        } else {
+          subtopicSelect.value = '';
+          subtopicEdit.value = '';
         }
       }, 100); // Small delay to ensure subtopics are populated
     } else {
       topicSelect.value = '';
       document.getElementById('subtopicSelect').innerHTML = '<option value="">Select Sub-topic...</option>';
+      document.getElementById('subtopicEdit').value = '';
     }
 
     // Update date input
@@ -1584,7 +1623,9 @@ class CSVReviewer {
         : document.getElementById('sentimentNeutral').classList.contains('selected') ? 'Neutral'
         : document.getElementById('sentimentNegative').classList.contains('selected') ? 'Negative' : '';
       const currentTopic = document.getElementById('topicSelect').value;
-      const currentSubtopic = document.getElementById('subtopicSelect').value;
+      // Sub-topic comes from the editable text field, which may contain a customized value
+      // (e.g. [Treatment/Product] replaced with the actual product name).
+      const currentSubtopic = document.getElementById('subtopicEdit').value;
       const currentDate = document.getElementById('dateInput').value;
 
       // Write latest UI values into the base entry before duplicating
@@ -1837,6 +1878,7 @@ Are you sure you want to continue?`);
     // Reset topic dropdowns
     document.getElementById('topicSelect').innerHTML = '<option value="">Select Topic...</option>';
     document.getElementById('subtopicSelect').innerHTML = '<option value="">Select Sub-topic...</option>';
+    document.getElementById('subtopicEdit').value = '';
 
     // Clear current entry display
     document.getElementById('currentEntry').innerHTML = '';
