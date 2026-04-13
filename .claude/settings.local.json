@@ -6,7 +6,8 @@
       "Read(//c/Users/krichards/OneDrive - Bradley Media Holdings, Inc/Documents/GitHub/Chrome_EXT_findMentions/**)",
       "Bash(python /tmp/read_xlsx.py)",
       "Bash(python:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep:*)"
     ]
   }
 }
