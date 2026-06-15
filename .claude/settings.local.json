@@ -7,7 +7,9 @@
       "Bash(python /tmp/read_xlsx.py)",
       "Bash(python:*)",
       "Bash(curl:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ping:*)",
+      "Bash(nslookup:*)"
     ]
   }
 }
