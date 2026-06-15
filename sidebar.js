@@ -54,7 +54,8 @@ class CSVReviewer {
     // Add keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeyboard(e));
 
-    // Next entry button
+    // Prev/Next entry buttons
+    document.getElementById('prevEntryBtn').addEventListener('click', () => this.goToPreviousEntry());
     document.getElementById('nextEntryBtn').addEventListener('click', () => this.goToNextEntry());
 
     // Scrape article button
@@ -109,15 +110,13 @@ class CSVReviewer {
           this.setSentiment('Negative');
         }
         break;
-      case 'p':
-      case 'P':
+      case ',':
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           this.goToPreviousEntry();
         }
         break;
-      case 'n':
-      case 'N':
+      case '.':
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           this.goToNextEntry();
@@ -627,46 +626,76 @@ class CSVReviewer {
   }
 
   parseCSV(text) {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
+    // RFC 4180 compliant parser — handles quoted fields containing commas,
+    // newlines, and escaped quotes. Required for article_text multi-line content.
+    const rows = [];
+    let i = 0;
+    const n = text.length;
 
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    while (i < n) {
+      const row = [];
+
+      while (i < n) {
+        if (text[i] === '"') {
+          // Quoted field
+          let field = '';
+          i++; // skip opening quote
+          while (i < n) {
+            if (text[i] === '"') {
+              if (text[i + 1] === '"') {
+                field += '"';
+                i += 2; // escaped quote
+              } else {
+                i++; // skip closing quote
+                break;
+              }
+            } else {
+              field += text[i++];
+            }
+          }
+          row.push(field);
+        } else {
+          // Unquoted field — read until comma or end-of-line
+          let field = '';
+          while (i < n && text[i] !== ',' && text[i] !== '\n' && text[i] !== '\r') {
+            field += text[i++];
+          }
+          row.push(field.trim());
+        }
+
+        if (i < n && text[i] === ',') {
+          i++; // consume comma, continue to next field
+        } else {
+          break; // end of row
+        }
+      }
+
+      // Consume row terminator
+      if (i < n && text[i] === '\r') i++;
+      if (i < n && text[i] === '\n') i++;
+
+      if (row.length > 0 && !(row.length === 1 && row[0] === '')) {
+        rows.push(row);
+      }
+    }
+
+    if (rows.length < 2) return [];
+
+    const headers = rows[0];
     const data = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = this.parseCSVLine(lines[i]);
-      if (values.length >= headers.length) {
+    for (let r = 1; r < rows.length; r++) {
+      const values = rows[r];
+      if (values.length > 0) {
         const row = {};
         headers.forEach((header, index) => {
-          row[header] = values[index] || '';
+          row[header] = values[index] !== undefined ? values[index] : '';
         });
         data.push(row);
       }
     }
 
     return data;
-  }
-
-  parseCSVLine(line) {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim().replace(/"/g, ''));
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    result.push(current.trim().replace(/"/g, ''));
-    return result;
   }
 
   async startProcessing() {
@@ -788,8 +817,11 @@ class CSVReviewer {
         await chrome.tabs.update(tab.id, { url: link });
 
         // Wait for page to load, then inject content script
+        let loadHandlerFired = false;
         const loadHandler = async (tabId, changeInfo) => {
           if (tabId === tab.id && changeInfo.status === 'complete') {
+            loadHandlerFired = true;
+            clearTimeout(loadTimeoutId);
             chrome.tabs.onUpdated.removeListener(loadHandler);
 
             this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
@@ -811,19 +843,28 @@ class CSVReviewer {
                 this.preloadNextPages();
               } catch (error) {
                 console.error('Error in searchAndHighlight:', error);
-                this.showStatus('processingStatus', '❌ Error searching page', 'warning');
+                this.showStatus('processingStatus', '❌ Error searching page — review manually', 'warning');
                 this.updateLoadingIndicator('ready', 'Error - Try again');
+                this.showReviewSection(); // must unlock isProcessing
               }
             }, 1000); // Reduced from 1500ms
           }
         };
 
+        // 30-second safety net — if the page never fires 'complete', unblock the UI
+        const loadTimeoutId = setTimeout(() => {
+          if (!loadHandlerFired) {
+            chrome.tabs.onUpdated.removeListener(loadHandler);
+            this.showStatus('processingStatus', '⚠️ Page load timed out — you can review manually or skip', 'warning');
+            this.updateLoadingIndicator('ready', 'Timed out');
+            this.showReviewSection(); // unlock UI
+          }
+        }, 30000);
+
         chrome.tabs.onUpdated.addListener(loadHandler);
         this.showStatus('processingStatus', `🔄 Loading: ${this.truncateUrl(link)}`, 'info');
         this.updateLoadingIndicator('loading', 'Loading page...');
       }
-
-      this.updateProgressInfo();
 
       this.updateProgressInfo();
 
@@ -1014,8 +1055,9 @@ class CSVReviewer {
         finalDate = result.date;
         console.log(`📅 Using page-detected date: ${finalDate} (source: ${result.source})`);
       } else if (existingDate) {
-        // Existing date is too old and page date is also old or missing — clear it
-        console.log(`📅 Existing date ${existingDate} is too old and no recent date found on page — clearing`);
+        // Keep the existing date (e.g. from the collector pipeline) — never discard data
+        finalDate = existingDate;
+        console.log(`📅 Keeping existing date ${existingDate} — no better date found on page`);
       }
 
       // Update the date field (may be setting or clearing)
@@ -1088,10 +1130,10 @@ class CSVReviewer {
     if (prevBtn) {
       if (this.currentIndex > 0) {
         prevBtn.disabled = false;
-        prevBtn.textContent = `← Previous Entry (${this.currentIndex})`;
+        prevBtn.innerHTML = `← Previous Entry (${this.currentIndex}) <kbd>Ctrl+,</kbd>`;
       } else {
         prevBtn.disabled = true;
-        prevBtn.textContent = '← Previous Entry';
+        prevBtn.innerHTML = `← Previous Entry <kbd>Ctrl+,</kbd>`;
       }
     }
 
@@ -1099,10 +1141,10 @@ class CSVReviewer {
     if (nextBtn) {
       if (this.currentIndex < this.csvData.length - 1) {
         nextBtn.disabled = false;
-        nextBtn.textContent = `Next Entry (${this.currentIndex + 2}) →`;
+        nextBtn.innerHTML = `Next Entry (${this.currentIndex + 2}) → <kbd>Ctrl+.</kbd>`;
       } else {
         nextBtn.disabled = true;
-        nextBtn.textContent = 'Next Entry →';
+        nextBtn.innerHTML = `Next Entry → <kbd>Ctrl+.</kbd>`;
       }
     }
   }
@@ -1126,15 +1168,6 @@ class CSVReviewer {
       // Clean up any preloaded tabs
       this.cleanupUnusedPreloadedTabs();
 
-      // Get current tab to close it after loading previous entry
-      let currentTab = null;
-      try {
-        [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        console.log(`🔙 Current tab ID: ${currentTab ? currentTab.id : 'none'}`);
-      } catch (e) {
-        console.log('Error getting current tab:', e);
-      }
-
       // Move to previous entry
       this.currentIndex--;
       console.log(`🔙 New index: ${this.currentIndex}`);
@@ -1146,18 +1179,7 @@ class CSVReviewer {
 
       // processCurrentEntryNoSkip will load the page and show review section without skipping filled entries
       await this.processCurrentEntryNoSkip();
-
-      // Close the tab we came from after a short delay
-      if (currentTab) {
-        setTimeout(async () => {
-          try {
-            await chrome.tabs.remove(currentTab.id);
-            console.log(`🔙 Closed previous tab ${currentTab.id} when going back to entry ${this.currentIndex + 1}`);
-          } catch (error) {
-            console.log('🔙 Previous tab may have already been closed:', error);
-          }
-        }, 1000);
-      }
+      // Tab is reused (navigated in place) — nothing to close.
 
     } catch (error) {
       console.error('❌ Error going to previous entry:', error);
@@ -1186,14 +1208,6 @@ class CSVReviewer {
       // Clean up any preloaded tabs
       this.cleanupUnusedPreloadedTabs();
 
-      // Get current tab to close it after loading next entry
-      let currentTab = null;
-      try {
-        [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      } catch (e) {
-        console.log('Error getting current tab:', e);
-      }
-
       // Move to next entry (no skipping — user explicitly wants to navigate)
       this.currentIndex++;
 
@@ -1201,17 +1215,7 @@ class CSVReviewer {
 
       // Process the next entry (this will load the page and show review section)
       await this.processCurrentEntryNoSkip();
-
-      // Close the tab we came from after a short delay
-      if (currentTab) {
-        setTimeout(async () => {
-          try {
-            await chrome.tabs.remove(currentTab.id);
-          } catch (error) {
-            console.log('🔜 Previous tab may have already been closed:', error);
-          }
-        }, 1000);
-      }
+      // Tab is reused (navigated in place) — nothing to close.
 
     } catch (error) {
       console.error('❌ Error going to next entry:', error);
@@ -1280,8 +1284,11 @@ class CSVReviewer {
 
         await chrome.tabs.update(tab.id, { url: link });
 
+        let loadHandlerFiredNoSkip = false;
         const loadHandler = async (tabId, changeInfo) => {
           if (tabId === tab.id && changeInfo.status === 'complete') {
+            loadHandlerFiredNoSkip = true;
+            clearTimeout(loadTimeoutIdNoSkip);
             chrome.tabs.onUpdated.removeListener(loadHandler);
 
             this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
@@ -1300,12 +1307,22 @@ class CSVReviewer {
                 this.preloadNextPages();
               } catch (error) {
                 console.error('Error in searchAndHighlight:', error);
-                this.showStatus('processingStatus', '❌ Error searching page', 'warning');
+                this.showStatus('processingStatus', '❌ Error searching page — review manually', 'warning');
                 this.updateLoadingIndicator('ready', 'Error - Try again');
+                this.showReviewSection(); // must unlock isProcessing
               }
             }, 1000);
           }
         };
+
+        const loadTimeoutIdNoSkip = setTimeout(() => {
+          if (!loadHandlerFiredNoSkip) {
+            chrome.tabs.onUpdated.removeListener(loadHandler);
+            this.showStatus('processingStatus', '⚠️ Page load timed out — you can review manually or skip', 'warning');
+            this.updateLoadingIndicator('ready', 'Timed out');
+            this.showReviewSection(); // unlock UI
+          }
+        }, 30000);
 
         chrome.tabs.onUpdated.addListener(loadHandler);
         this.showStatus('processingStatus', `🔄 Loading: ${this.truncateUrl(link)}`, 'info');
@@ -1912,6 +1929,12 @@ Are you sure you want to continue?`);
       });
     } catch (error) {
       console.error('Error saving state:', error);
+      // QUOTA_BYTES_PER_ITEM or QUOTA_BYTES exceeded — article_text columns can be large
+      if (error.message && (error.message.includes('QUOTA') || error.message.includes('quota'))) {
+        this.showStatus('processingStatus', '⚠️ Storage full — download CSV now to avoid losing progress, then reload', 'warning');
+      } else {
+        this.showStatus('processingStatus', `⚠️ Could not save progress: ${error.message}`, 'warning');
+      }
     }
   }
 

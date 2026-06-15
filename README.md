@@ -145,8 +145,8 @@ In practice: if you batch-delete a run of irrelevant articles without adding oth
 
 ### Navigation
 - **← →** — jump between highlighted matches on the current page
-- **Ctrl+P** — previous entry
-- **Ctrl+N** — next entry
+- **Ctrl+,** — previous entry
+- **Ctrl+.** — next entry
 
 ### Labeling
 - **Ctrl+1** — Positive sentiment

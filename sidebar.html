@@ -333,6 +333,19 @@
       min-width: 120px;
     }
 
+    kbd {
+      display: inline-block;
+      font-size: 10px;
+      font-family: monospace;
+      background: rgba(0,0,0,0.15);
+      border-radius: 3px;
+      padding: 1px 4px;
+      margin-left: 4px;
+      vertical-align: middle;
+      line-height: 1.4;
+      letter-spacing: 0;
+    }
+
     .tag-controls .secondary-btn:hover {
       background: #f7fafc;
       border-color: #a0aec0;
@@ -679,9 +692,9 @@
 
         <div class="sentiment-controls">
           <h4>😊 Sentiment</h4>
-          <button id="sentimentPositive" class="sentiment-btn sentiment-positive">👍 Positive</button>
-          <button id="sentimentNeutral" class="sentiment-btn sentiment-neutral">😐 Neutral</button>
-          <button id="sentimentNegative" class="sentiment-btn sentiment-negative">👎 Negative</button>
+          <button id="sentimentPositive" class="sentiment-btn sentiment-positive">👍 Positive <kbd>Ctrl+1</kbd></button>
+          <button id="sentimentNeutral" class="sentiment-btn sentiment-neutral">😐 Neutral <kbd>Ctrl+2</kbd></button>
+          <button id="sentimentNegative" class="sentiment-btn sentiment-negative">👎 Negative <kbd>Ctrl+3</kbd></button>
         </div>
 
         <div class="topic-controls" id="topicControls" style="display: none;">
@@ -714,10 +727,10 @@
         </div>
 
         <div class="tag-controls">
-          <button id="prevEntryBtn" class="secondary-btn">← Previous Entry</button>
-          <button id="keepBtn" class="primary-btn">✓ KEEP</button>
-          <button id="deleteBtn" class="danger-btn">✗ DELETE</button>
-          <button id="nextEntryBtn" class="secondary-btn">Next Entry →</button>
+          <button id="prevEntryBtn" class="secondary-btn">← Previous Entry <kbd>Ctrl+,</kbd></button>
+          <button id="keepBtn" class="primary-btn">✓ KEEP <kbd>Ctrl+K</kbd></button>
+          <button id="deleteBtn" class="danger-btn">✗ DELETE <kbd>Ctrl+D</kbd></button>
+          <button id="nextEntryBtn" class="secondary-btn">Next Entry → <kbd>Ctrl+.</kbd></button>
         </div>
       </div>
     </div>
