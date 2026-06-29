@@ -2200,6 +2200,20 @@ Are you sure you want to continue?`);
         WHERE v.link IS NULL
         ORDER BY p.company
       `;
+      // Diagnostic: compare sample values from both tables before main query
+      const diagRows = await this.bqRunQuery(`
+        SELECT
+          (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.validated_results\`) AS validated_count,
+          (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.processed_serp_results\` p
+            JOIN \`${projectId}.${datasetId}.validated_results\` v
+            ON p.company = v.company AND p.link = v.link) AS matched_count
+      `);
+      if (diagRows.length > 0) {
+        this.log(`Diagnostic: validated_results has ${diagRows[0].validated_count} rows, ${diagRows[0].matched_count} match processed_serp_results on company+link`);
+      }
+      const sampleRows = await this.bqRunQuery(`SELECT company, link FROM \`${projectId}.${datasetId}.validated_results\` LIMIT 3`);
+      sampleRows.forEach((r, i) => this.log(`validated_results[${i}]: company="${r.company}" link="${r.link}"`));
+
       const rawRows = await this.bqRunQuery(sql);
       this.log(`LEFT JOIN query returned ${rawRows.length} unreviewed row(s)`);
       if (rawRows.length === 0) {
