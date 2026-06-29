@@ -2257,18 +2257,29 @@ Are you sure you want to continue?`);
 
   async writeValidationToBigQuery(entry, decision) {
     try {
-      // Spread all source columns; strip the local-only KEEP/DELETE field
+      const { projectId, datasetId } = this.bqConfig;
+      // Strip the local-only KEEP/DELETE field; add validation columns
       const { [this.cols.keepDelete]: _kd, ...sourceFields } = entry;
-      const row = {
-        ...sourceFields,
-        decision,
-        validated_at: new Date().toISOString()
+      const row = { ...sourceFields, decision, validated_at: new Date().toISOString() };
+
+      // Escape a value for inline SQL — avoids streaming buffer JOIN issues
+      const sqlVal = (col, val) => {
+        if (val === null || val === undefined || val === '') return 'NULL';
+        const s = String(val).replace(/'/g, "''");
+        if (col === 'validated_at') return `TIMESTAMP('${s}')`;
+        return `'${s}'`;
       };
-      this.log(`BQ write row keys: ${Object.keys(row).join(', ')}`);
-      await this.bqStreamInsert('validated_results', [row]);
+
+      const cols = Object.keys(row);
+      const colList = cols.map(c => `\`${c}\``).join(', ');
+      const valList = cols.map(c => sqlVal(c, row[c])).join(', ');
+      const sql = `INSERT INTO \`${projectId}.${datasetId}.validated_results\` (${colList}) VALUES (${valList})`;
+
+      this.log(`BQ DML insert: ${entry[this.cols.company]} / ${entry.link}`);
+      await this.bqRunQuery(sql);
+      this.log('BQ DML insert succeeded');
     } catch (err) {
       this.log(`BQ write error: ${err.message}`);
-      // Show error permanently (not auto-clearing) so it isn't missed
       const el = document.getElementById('processingStatus');
       if (el) { el.textContent = `⚠️ BQ write failed: ${err.message}`; el.className = 'status-warning'; }
     }
