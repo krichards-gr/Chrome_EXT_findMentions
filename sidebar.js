@@ -2147,33 +2147,24 @@ Are you sure you want to continue?`);
 
   async bqEnsureValidatedTable() {
     const { projectId, datasetId } = this.bqConfig;
+    // Check if table already exists with the correct schema
+    try {
+      await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
+      return; // exists — leave it alone
+    } catch (err) {
+      if (!err.message.includes('404')) throw err;
+    }
+    // Create from source table schema + validation columns
     const sourceTable = await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/processed_serp_results`);
-    const sourceFields = sourceTable.schema?.fields || [];
-    const validationFields = [
+    const fields = [
+      ...(sourceTable.schema?.fields || []),
       { name: 'decision', type: 'STRING' },
       { name: 'validated_at', type: 'TIMESTAMP' }
     ];
-    let needsRecreate = false;
-    try {
-      const existing = await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
-      const existingNames = new Set((existing.schema?.fields || []).map(f => f.name));
-      // Recreate if missing any source columns or validation columns
-      const allExpected = [...sourceFields, ...validationFields];
-      needsRecreate = allExpected.some(f => !existingNames.has(f.name));
-    } catch (err) {
-      if (!err.message.includes('404')) throw err;
-      needsRecreate = true; // doesn't exist yet
-    }
-    if (needsRecreate) {
-      // Drop if it exists
-      try {
-        await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`, 'DELETE');
-      } catch (e) { /* ignore 404 */ }
-      await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables`, 'POST', {
-        tableReference: { projectId, datasetId, tableId: 'validated_results' },
-        schema: { fields: [...sourceFields, ...validationFields] }
-      });
-    }
+    await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables`, 'POST', {
+      tableReference: { projectId, datasetId, tableId: 'validated_results' },
+      schema: { fields }
+    });
   }
 
   async bqLoadData() {
