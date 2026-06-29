@@ -5,12 +5,11 @@ class CSVReviewer {
     this.variationsData = [];
     this.currentIndex = 0;
     this.currentSentiment = '';
-    this.preloadedTabs = new Map(); // Store preloaded tabs
-    this.isProcessing = false; // Guard against race conditions
-    this.selectedCompanies = []; // Companies selected for entries with no corporation
-    this._skipCount = 0; // Used to skip past duplicate rows after multi-company tagging
-    this.detectedCompanies = []; // Companies detected on page when no company assigned
-    // Column name mapping — detected from the loaded file's headers
+    this.preloadedTabs = new Map();
+    this.isProcessing = false;
+    this.selectedCompanies = [];
+    this._skipCount = 0;
+    this.detectedCompanies = [];
     this.cols = {
       company: 'corporation',
       sentiment: 'Sentiment',
@@ -19,6 +18,12 @@ class CSVReviewer {
       date: 'Date',
       keepDelete: 'KEEP/DELETE'
     };
+    // BigQuery state
+    this.bqMode = false;
+    this.bqConfig = { projectId: '', datasetId: 'coverage_collector', clientId: '' };
+    this.bqToken = null;
+    this.bqTokenExpiry = null;
+
     this.initializeEventListeners();
     this.loadState();
     this.updateStepIndicators();
@@ -57,6 +62,19 @@ class CSVReviewer {
     // Prev/Next entry buttons
     document.getElementById('prevEntryBtn').addEventListener('click', () => this.goToPreviousEntry());
     document.getElementById('nextEntryBtn').addEventListener('click', () => this.goToNextEntry());
+
+    // Mode toggle
+    document.getElementById('csvModeBtn').addEventListener('click', () => this.setMode('csv'));
+    document.getElementById('bqModeBtn').addEventListener('click', () => this.setMode('bq'));
+
+    // BigQuery buttons
+    document.getElementById('bqSaveConfig').addEventListener('click', () => this.bqSaveConfig());
+    document.getElementById('bqConnect').addEventListener('click', () => this.bqConnect());
+    document.getElementById('bqLoad').addEventListener('click', () => this.bqLoadData());
+
+    // Show extension ID for redirect URI setup
+    document.getElementById('bqRedirectUri').textContent =
+      `https://${chrome.runtime.id}.chromiumapp.org/`;
 
     // Scrape article button
     document.getElementById('scrapeArticleBtn').addEventListener('click', () => this.scrapeArticle());
@@ -1680,6 +1698,10 @@ class CSVReviewer {
 
       await this.saveState();
 
+      if (this.bqMode) {
+        await this.writeValidationToBigQuery(baseEntry, tag);
+      }
+
       const emoji = tag === 'KEEP' ? '✅' : '❌';
       const dupCount = this._skipCount || 0;
       if (dupCount > 0) {
@@ -1925,7 +1947,9 @@ Are you sure you want to continue?`);
         topicHierarchy: this.topicHierarchy,
         variationsMap: this.variationsMap,
         currentIndex: this.currentIndex,
-        cols: this.cols
+        cols: this.cols,
+        bqMode: this.bqMode,
+        bqConfig: this.bqConfig
       });
     } catch (error) {
       console.error('Error saving state:', error);
@@ -1941,7 +1965,8 @@ Are you sure you want to continue?`);
   async loadState() {
     try {
       const result = await chrome.storage.local.get([
-        'csvData', 'topicData', 'topicHierarchy', 'variationsMap', 'currentIndex', 'cols'
+        'csvData', 'topicData', 'topicHierarchy', 'variationsMap', 'currentIndex', 'cols',
+        'bqMode', 'bqConfig'
       ]);
 
       if (result.cols) {
@@ -1973,8 +1998,243 @@ Are you sure you want to continue?`);
         const totalVariations = Object.values(this.variationsMap).reduce((sum, variations) => sum + variations.length, 0);
         this.showStatus('variationsStatus', `🔄 Restored variations for ${Object.keys(this.variationsMap).length} companies (${totalVariations} total)`, 'info');
       }
+
+      if (result.bqConfig) {
+        this.bqConfig = { ...this.bqConfig, ...result.bqConfig };
+      }
+      if (result.bqMode !== undefined) {
+        this.bqMode = result.bqMode;
+      }
+      // Restore BQ mode UI
+      this.setMode(this.bqMode ? 'bq' : 'csv');
+      if (this.bqConfig.projectId) document.getElementById('bqProjectId').value = this.bqConfig.projectId;
+      if (this.bqConfig.datasetId) document.getElementById('bqDatasetId').value = this.bqConfig.datasetId;
+      if (this.bqConfig.clientId) document.getElementById('bqClientId').value = this.bqConfig.clientId;
     } catch (error) {
       console.error('Error loading state:', error);
+    }
+  }
+
+  // ─── BigQuery mode ───────────────────────────────────────────────────────
+
+  setMode(mode) {
+    this.bqMode = (mode === 'bq');
+    document.getElementById('csvSection').style.display = this.bqMode ? 'none' : 'block';
+    document.getElementById('bqSection').style.display = this.bqMode ? 'block' : 'none';
+    document.getElementById('csvModeBtn').classList.toggle('mode-btn-active', !this.bqMode);
+    document.getElementById('bqModeBtn').classList.toggle('mode-btn-active', this.bqMode);
+  }
+
+  bqSaveConfig() {
+    const projectId = document.getElementById('bqProjectId').value.trim();
+    const datasetId = document.getElementById('bqDatasetId').value.trim();
+    const clientId = document.getElementById('bqClientId').value.trim();
+    if (!projectId || !clientId) {
+      this.showStatus('bqConfigStatus', '⚠️ Project ID and Client ID are required', 'warning');
+      return;
+    }
+    this.bqConfig = { projectId, datasetId: datasetId || 'coverage_collector', clientId };
+    this.saveState();
+    this.showStatus('bqConfigStatus', '✅ Config saved', 'success');
+    document.getElementById('bqConnect').disabled = false;
+  }
+
+  async bqConnect() {
+    if (!this.bqConfig.clientId) {
+      this.showStatus('bqAuthStatus', '⚠️ Save config first', 'warning');
+      return;
+    }
+    this.showStatus('bqAuthStatus', '🔑 Opening Google sign-in…', 'info');
+    const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
+    const scope = encodeURIComponent('https://www.googleapis.com/auth/bigquery');
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(this.bqConfig.clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scope}`;
+    try {
+      const responseUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true });
+      const hash = new URL(responseUrl).hash.substring(1);
+      const params = Object.fromEntries(hash.split('&').map(p => p.split('=')));
+      if (!params.access_token) throw new Error('No access_token in response');
+      this.bqToken = params.access_token;
+      this.bqTokenExpiry = Date.now() + (parseInt(params.expires_in, 10) - 60) * 1000;
+      document.getElementById('bqLoad').disabled = false;
+      this.showStatus('bqAuthStatus', '✅ Signed in', 'success');
+    } catch (err) {
+      console.error('BQ auth error:', err);
+      this.showStatus('bqAuthStatus', `❌ Sign-in failed: ${err.message}`, 'warning');
+    }
+  }
+
+  async bqGetToken() {
+    if (this.bqToken && this.bqTokenExpiry && Date.now() < this.bqTokenExpiry) {
+      return this.bqToken;
+    }
+    await this.bqConnect();
+    return this.bqToken;
+  }
+
+  async bqRequest(endpoint, method = 'GET', body = null) {
+    const token = await this.bqGetToken();
+    if (!token) throw new Error('Not authenticated');
+    const opts = {
+      method,
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const resp = await fetch(`https://bigquery.googleapis.com/bigquery/v2/${endpoint}`, opts);
+    const json = await resp.json();
+    if (!resp.ok) {
+      const msg = json.error?.message || resp.statusText;
+      throw new Error(`BQ API ${resp.status}: ${msg}`);
+    }
+    return json;
+  }
+
+  async bqRunQuery(sql) {
+    const { projectId } = this.bqConfig;
+    // Start async job
+    const job = await this.bqRequest(`projects/${projectId}/jobs`, 'POST', {
+      configuration: { query: { query: sql, useLegacySql: false } }
+    });
+    const jobId = job.jobReference.jobId;
+    // Poll until done
+    let status;
+    do {
+      await new Promise(r => setTimeout(r, 800));
+      status = await this.bqRequest(`projects/${projectId}/jobs/${jobId}`);
+    } while (status.status.state !== 'DONE');
+    if (status.status.errorResult) {
+      throw new Error(status.status.errorResult.message);
+    }
+    // Paginate results
+    const rows = [];
+    const schema = status.statistics.query?.schema || status.schema;
+    let pageToken = null;
+    do {
+      const pageParam = pageToken ? `&pageToken=${pageToken}` : '';
+      const page = await this.bqRequest(`projects/${projectId}/queries/${jobId}?maxResults=1000${pageParam}`);
+      if (page.rows) {
+        const fields = (page.schema || schema)?.fields || [];
+        for (const row of page.rows) {
+          const obj = {};
+          fields.forEach((f, i) => { obj[f.name] = row.f[i].v; });
+          rows.push(obj);
+        }
+      }
+      pageToken = page.pageToken;
+    } while (pageToken);
+    return rows;
+  }
+
+  async bqStreamInsert(table, rows) {
+    const { projectId, datasetId } = this.bqConfig;
+    const endpoint = `projects/${projectId}/datasets/${datasetId}/tables/${table}/insertAll`;
+    const body = { rows: rows.map((r, i) => ({ insertId: `row-${Date.now()}-${i}`, json: r })) };
+    const result = await this.bqRequest(endpoint, 'POST', body);
+    if (result.insertErrors && result.insertErrors.length > 0) {
+      const msgs = result.insertErrors.map(e => e.errors.map(x => x.message).join('; ')).join(' | ');
+      throw new Error(`BQ insert errors: ${msgs}`);
+    }
+    return result;
+  }
+
+  async bqEnsureValidatedTable() {
+    const { projectId, datasetId } = this.bqConfig;
+    try {
+      await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
+    } catch (err) {
+      if (!err.message.includes('404')) throw err;
+      // Create the table
+      await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables`, 'POST', {
+        tableReference: { projectId, datasetId, tableId: 'validated_results' },
+        schema: {
+          fields: [
+            { name: 'company', type: 'STRING' },
+            { name: 'link', type: 'STRING' },
+            { name: 'decision', type: 'STRING' },
+            { name: 'sentiment', type: 'STRING' },
+            { name: 'topic', type: 'STRING' },
+            { name: 'sub_topic', type: 'STRING' },
+            { name: 'date', type: 'STRING' },
+            { name: 'validated_at', type: 'TIMESTAMP' }
+          ]
+        }
+      });
+    }
+  }
+
+  async bqLoadData() {
+    if (!this.bqConfig.projectId || !this.bqConfig.datasetId) {
+      this.showStatus('bqStatus', '⚠️ Save config first', 'warning');
+      return;
+    }
+    this.showStatus('bqStatus', '⏳ Loading from BigQuery…', 'info');
+    try {
+      await this.bqEnsureValidatedTable();
+      const { projectId, datasetId } = this.bqConfig;
+      const sql = `
+        SELECT p.*
+        FROM \`${projectId}.${datasetId}.processed_serp_results\` p
+        LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
+          ON p.company = v.company AND p.link = v.link
+        WHERE v.link IS NULL
+        ORDER BY p.company
+      `;
+      const rawRows = await this.bqRunQuery(sql);
+      if (rawRows.length === 0) {
+        this.showStatus('bqStatus', '✅ No unreviewed records found', 'success');
+        return;
+      }
+      // Normalize rows to match extension's expected column names
+      this.csvData = rawRows.map(r => {
+        const row = { ...r };
+        // Normalize sentiment to title case
+        if (row.sentiment) {
+          row.sentiment = row.sentiment.charAt(0).toUpperCase() + row.sentiment.slice(1).toLowerCase();
+        }
+        // Normalize timestamp dates to YYYY-MM-DD
+        if (row.date && row.date.length > 10) {
+          row.date = row.date.substring(0, 10);
+        }
+        return row;
+      });
+      this.currentIndex = 0;
+      // Map BQ column names to the extension's internal cols object
+      const keys = Object.keys(this.csvData[0]);
+      this.cols.company = keys.find(k => k === 'company') || keys.find(k => k === 'corporation') || 'company';
+      this.cols.sentiment = keys.find(k => k === 'sentiment') || keys.find(k => k === 'Sentiment') || 'sentiment';
+      this.cols.topic = keys.find(k => k === 'topic') || keys.find(k => k === 'Topic') || 'topic';
+      this.cols.subtopic = keys.find(k => k === 'sub_topic') || keys.find(k => k === 'Sub-topic') || keys.find(k => k === 'subtopic') || 'sub_topic';
+      this.cols.date = keys.find(k => k === 'date') || keys.find(k => k === 'Date') || 'date';
+      this.cols.content = keys.find(k => /^(content|full[_ ]?text|article[_ ]?text|body[_ ]?text|text)$/i.test(k)) || null;
+      this.cols.keepDelete = 'KEEP/DELETE';
+      // Ensure all rows have the KEEP/DELETE field
+      this.csvData.forEach(row => { row['KEEP/DELETE'] = row['KEEP/DELETE'] || ''; });
+      await this.saveState();
+      this.showStatus('bqStatus', `✅ Loaded ${this.csvData.length} unreviewed records`, 'success');
+      document.getElementById('startProcessing').disabled = false;
+      document.getElementById('downloadCsv').disabled = false;
+      this.updateProgressInfo();
+    } catch (err) {
+      console.error('BQ load error:', err);
+      this.showStatus('bqStatus', `❌ ${err.message}`, 'warning');
+    }
+  }
+
+  async writeValidationToBigQuery(entry, decision) {
+    try {
+      const row = {
+        company: entry[this.cols.company] || '',
+        link: entry.link || '',
+        decision,
+        sentiment: entry[this.cols.sentiment] || '',
+        topic: entry[this.cols.topic] || '',
+        sub_topic: entry[this.cols.subtopic] || '',
+        date: entry[this.cols.date] || '',
+        validated_at: new Date().toISOString()
+      };
+      await this.bqStreamInsert('validated_results', [row]);
+    } catch (err) {
+      console.error('BQ write error:', err);
+      this.showStatus('processingStatus', `⚠️ BQ write failed: ${err.message}`, 'warning');
     }
   }
 

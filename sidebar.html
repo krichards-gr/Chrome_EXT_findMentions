@@ -346,6 +346,78 @@
       letter-spacing: 0;
     }
 
+    .mode-toggle-group {
+      display: flex;
+      gap: 0;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 5px 12px;
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+      border: none;
+      border-radius: 0;
+      background: white;
+      color: #718096;
+      cursor: pointer;
+      box-shadow: none;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .mode-btn:hover {
+      background: #f0f9f7;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .mode-btn.mode-btn-active {
+      background: var(--primary-slate);
+      color: white;
+    }
+
+    .bq-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text-dark);
+    }
+
+    .bq-input:focus {
+      outline: none;
+      border-color: var(--primary-teal-dark);
+      box-shadow: 0 0 0 2px rgba(152, 210, 197, 0.3);
+    }
+
+    .bq-note {
+      font-size: 11px;
+      color: #718096;
+      margin: 4px 0 10px;
+      line-height: 1.5;
+    }
+
+    .bq-redirect-uri {
+      font-family: monospace;
+      font-size: 11px;
+      background: #f0f4f8;
+      border: 1px solid #e2e8f0;
+      border-radius: 3px;
+      padding: 4px 6px;
+      word-break: break-all;
+      display: block;
+      margin-top: 4px;
+      color: var(--primary-slate);
+    }
+
     .tag-controls .secondary-btn:hover {
       background: #f7fafc;
       border-color: #a0aec0;
@@ -621,23 +693,60 @@
     <div class="section-content">
       <div class="step-number" id="step1">1</div>
       <div class="section-text">
-        <h3>Upload Files</h3>
 
-        <div class="file-section">
-          <h4>📄 Data File</h4>
-          <input type="file" id="csvFile" accept=".csv,.xlsx,.xls" />
-          <button id="loadCsv" class="secondary-btn">Load Data</button>
-          <div id="sheetSelectorContainer" style="display: none; margin: 10px 0; padding: 10px; border: 1px solid var(--primary-teal); border-radius: 4px; background: #f0f9f7;">
-            <h4 style="margin: 0 0 8px 0; color: var(--primary-slate); font-size: 13px;">Multiple sheets found — select one:</h4>
-            <select id="sheetSelect" style="margin-bottom: 8px;"></select>
-            <div style="display: flex; gap: 8px;">
-              <button id="sheetConfirmBtn" class="secondary-btn" style="flex: 1;">Load Sheet</button>
-              <button id="sheetCancelBtn" class="nav-btn" style="flex: 1; width: auto;">Cancel</button>
-            </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+          <h3 style="margin: 0; padding: 0; border: none;">Data Source</h3>
+          <div class="mode-toggle-group">
+            <button id="csvModeBtn" class="mode-btn mode-btn-active">📄 CSV</button>
+            <button id="bqModeBtn" class="mode-btn">☁️ BigQuery</button>
           </div>
-          <div id="csvStatus"></div>
         </div>
 
+        <!-- CSV Mode -->
+        <div id="csvSection">
+          <div class="file-section">
+            <h4>📄 Data File</h4>
+            <input type="file" id="csvFile" accept=".csv,.xlsx,.xls" />
+            <button id="loadCsv" class="secondary-btn">Load Data</button>
+            <div id="sheetSelectorContainer" style="display: none; margin: 10px 0; padding: 10px; border: 1px solid var(--primary-teal); border-radius: 4px; background: #f0f9f7;">
+              <h4 style="margin: 0 0 8px 0; color: var(--primary-slate); font-size: 13px;">Multiple sheets found — select one:</h4>
+              <select id="sheetSelect" style="margin-bottom: 8px;"></select>
+              <div style="display: flex; gap: 8px;">
+                <button id="sheetConfirmBtn" class="secondary-btn" style="flex: 1;">Load Sheet</button>
+                <button id="sheetCancelBtn" class="nav-btn" style="flex: 1; width: auto;">Cancel</button>
+              </div>
+            </div>
+            <div id="csvStatus"></div>
+          </div>
+        </div>
+
+        <!-- BigQuery Mode -->
+        <div id="bqSection" style="display: none;">
+          <div class="file-section">
+            <h4>☁️ BigQuery Configuration</h4>
+            <p class="bq-note">
+              Add this redirect URI to your OAuth 2.0 client in GCP Console
+              (APIs &amp; Services → Credentials → your Web client → Authorised redirect URIs):
+              <code class="bq-redirect-uri" id="bqRedirectUri">Loading…</code>
+            </p>
+            <input type="text" id="bqProjectId" class="bq-input" placeholder="GCP Project ID" />
+            <input type="text" id="bqDatasetId" class="bq-input" placeholder="Dataset ID (e.g. coverage_collector)" />
+            <input type="text" id="bqClientId" class="bq-input" placeholder="OAuth 2.0 Client ID (….apps.googleusercontent.com)" />
+            <button id="bqSaveConfig" class="secondary-btn">💾 Save Config</button>
+            <div id="bqConfigStatus"></div>
+            <button id="bqConnect" class="secondary-btn" style="margin-top: 6px;">🔗 Sign in with Google</button>
+            <div id="bqAuthStatus" style="font-size: 12px; color: #718096; margin: 4px 0;"></div>
+          </div>
+
+          <div class="file-section">
+            <h4>📥 Load Unvalidated Records</h4>
+            <p class="bq-note">Loads rows from <code>processed_serp_results</code> that are not yet in <code>validated_results</code>.</p>
+            <button id="bqLoad" class="primary-btn" disabled>☁️ Load from BigQuery</button>
+            <div id="bqStatus"></div>
+          </div>
+        </div>
+
+        <!-- Always visible: optional helper files -->
         <div class="file-section">
           <h4>🏢 Company Variations File (Optional)</h4>
           <input type="file" id="variationsFile" accept=".csv" />
@@ -651,6 +760,7 @@
           <button id="loadTopics" class="secondary-btn">Load Topics</button>
           <div id="topicStatus"></div>
         </div>
+
       </div>
     </div>
   </div>

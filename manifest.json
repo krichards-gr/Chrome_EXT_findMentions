@@ -7,7 +7,8 @@
     "activeTab",
     "storage",
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "identity"
   ],
   "host_permissions": [
     "http://*/*",
