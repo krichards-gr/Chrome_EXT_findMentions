@@ -2209,8 +2209,8 @@ Are you sure you want to continue?`);
         SELECT p.*
         FROM \`${projectId}.${datasetId}.processed_serp_results\` p
         LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
-          ON p.company = v.company AND p.url = v.url
-        WHERE v.url IS NULL
+          ON p.company = v.company AND p.link = v.link
+        WHERE v.link IS NULL
         ORDER BY p.company
       `;
       const rawRows = await this.bqRunQuery(sql);
@@ -2222,10 +2222,6 @@ Are you sure you want to continue?`);
       // Normalize rows to match extension's expected column names
       this.csvData = rawRows.map(r => {
         const row = { ...r };
-        // Map 'url' → 'link' so navigation code always reads entry.link
-        if ('url' in row && !('link' in row)) {
-          row.link = row.url;
-        }
         // Normalize sentiment to title case
         if (row.sentiment) {
           row.sentiment = row.sentiment.charAt(0).toUpperCase() + row.sentiment.slice(1).toLowerCase();
