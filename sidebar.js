@@ -40,6 +40,9 @@ class CSVReviewer {
     document.getElementById('nextMatch').addEventListener('click', () => this.navigateMatch('next'));
     document.getElementById('downloadCsv').addEventListener('click', () => this.downloadCSV());
     document.getElementById('clearAllData').addEventListener('click', () => this.clearAllData());
+    document.getElementById('clearDebugLog').addEventListener('click', () => {
+      document.getElementById('debugLog').textContent = '';
+    });
 
     // Sentiment buttons
     document.getElementById('sentimentPositive').addEventListener('click', () => this.setSentiment('Positive'));
@@ -2053,6 +2056,7 @@ Are you sure you want to continue?`);
       this.showStatus('bqAuthStatus', '⚠️ Save config first', 'warning');
       return;
     }
+    this.log('OAuth: starting sign-in flow');
     this.showStatus('bqAuthStatus', '🔑 Opening Google sign-in…', 'info');
     const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
     const scope = encodeURIComponent('https://www.googleapis.com/auth/bigquery');
@@ -2064,10 +2068,11 @@ Are you sure you want to continue?`);
       if (!params.access_token) throw new Error('No access_token in response');
       this.bqToken = params.access_token;
       this.bqTokenExpiry = Date.now() + (parseInt(params.expires_in, 10) - 60) * 1000;
+      this.log(`OAuth: signed in, token expires in ${params.expires_in}s`);
       document.getElementById('bqLoad').disabled = false;
       this.showStatus('bqAuthStatus', '✅ Signed in', 'success');
     } catch (err) {
-      console.error('BQ auth error:', err);
+      this.log(`OAuth error: ${err.message}`);
       this.showStatus('bqAuthStatus', `❌ Sign-in failed: ${err.message}`, 'warning');
     }
   }
@@ -2076,6 +2081,7 @@ Are you sure you want to continue?`);
     if (this.bqToken && this.bqTokenExpiry && Date.now() < this.bqTokenExpiry) {
       return this.bqToken;
     }
+    this.log('OAuth: token missing or expired, re-authenticating');
     await this.bqConnect();
     return this.bqToken;
   }
@@ -2083,15 +2089,21 @@ Are you sure you want to continue?`);
   async bqRequest(endpoint, method = 'GET', body = null) {
     const token = await this.bqGetToken();
     if (!token) throw new Error('Not authenticated');
+    this.log(`BQ ${method} ${endpoint}`);
     const opts = {
       method,
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
     };
     if (body) opts.body = JSON.stringify(body);
     const resp = await fetch(`https://bigquery.googleapis.com/bigquery/v2/${endpoint}`, opts);
+    if (method === 'DELETE' && resp.status === 204) {
+      this.log(`BQ ${method} ${endpoint} → 204 No Content`);
+      return null;
+    }
     const json = await resp.json();
     if (!resp.ok) {
       const msg = json.error?.message || resp.statusText;
+      this.log(`BQ error ${resp.status}: ${msg}`);
       throw new Error(`BQ API ${resp.status}: ${msg}`);
     }
     return json;
@@ -2099,6 +2111,7 @@ Are you sure you want to continue?`);
 
   async bqRunQuery(sql) {
     const { projectId } = this.bqConfig;
+    this.log(`BQ query:\n${sql.trim()}`);
     // Start async job
     const job = await this.bqRequest(`projects/${projectId}/jobs`, 'POST', {
       configuration: { query: { query: sql, useLegacySql: false } }
@@ -2111,8 +2124,10 @@ Are you sure you want to continue?`);
       status = await this.bqRequest(`projects/${projectId}/jobs/${jobId}`);
     } while (status.status.state !== 'DONE');
     if (status.status.errorResult) {
+      this.log(`BQ query failed: ${status.status.errorResult.message}`);
       throw new Error(status.status.errorResult.message);
     }
+    this.log(`BQ query job ${jobId} complete`);
     // Paginate results
     const rows = [];
     const schema = status.statistics.query?.schema || status.schema;
@@ -2130,18 +2145,22 @@ Are you sure you want to continue?`);
       }
       pageToken = page.pageToken;
     } while (pageToken);
+    this.log(`BQ query returned ${rows.length} rows`);
     return rows;
   }
 
   async bqStreamInsert(table, rows) {
     const { projectId, datasetId } = this.bqConfig;
     const endpoint = `projects/${projectId}/datasets/${datasetId}/tables/${table}/insertAll`;
+    this.log(`BQ insert → ${table} (${rows.length} row(s))`);
     const body = { rows: rows.map((r, i) => ({ insertId: `row-${Date.now()}-${i}`, json: r })) };
     const result = await this.bqRequest(endpoint, 'POST', body);
     if (result.insertErrors && result.insertErrors.length > 0) {
       const msgs = result.insertErrors.map(e => e.errors.map(x => x.message).join('; ')).join(' | ');
+      this.log(`BQ insert errors: ${msgs}`);
       throw new Error(`BQ insert errors: ${msgs}`);
     }
+    this.log(`BQ insert succeeded`);
     return result;
   }
 
@@ -2150,10 +2169,12 @@ Are you sure you want to continue?`);
     // Check if table already exists with the correct schema
     try {
       await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
+      this.log('validated_results table exists — leaving it alone');
       return; // exists — leave it alone
     } catch (err) {
       if (!err.message.includes('404')) throw err;
     }
+    this.log('validated_results not found — creating from processed_serp_results schema');
     // Create from source table schema + validation columns
     const sourceTable = await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/processed_serp_results`);
     const fields = [
@@ -2161,10 +2182,12 @@ Are you sure you want to continue?`);
       { name: 'decision', type: 'STRING' },
       { name: 'validated_at', type: 'TIMESTAMP' }
     ];
+    this.log(`Creating validated_results with ${fields.length} fields: ${fields.map(f => f.name).join(', ')}`);
     await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables`, 'POST', {
       tableReference: { projectId, datasetId, tableId: 'validated_results' },
       schema: { fields }
     });
+    this.log('validated_results created');
   }
 
   async bqLoadData() {
@@ -2172,6 +2195,7 @@ Are you sure you want to continue?`);
       this.showStatus('bqStatus', '⚠️ Save config first', 'warning');
       return;
     }
+    this.log(`bqLoadData: project=${this.bqConfig.projectId} dataset=${this.bqConfig.datasetId}`);
     this.showStatus('bqStatus', '⏳ Loading from BigQuery…', 'info');
     try {
       await this.bqEnsureValidatedTable();
@@ -2185,6 +2209,7 @@ Are you sure you want to continue?`);
         ORDER BY p.company
       `;
       const rawRows = await this.bqRunQuery(sql);
+      this.log(`LEFT JOIN query returned ${rawRows.length} unreviewed row(s)`);
       if (rawRows.length === 0) {
         this.showStatus('bqStatus', '✅ No unreviewed records found', 'success');
         return;
@@ -2234,15 +2259,24 @@ Are you sure you want to continue?`);
         decision,
         validated_at: new Date().toISOString()
       };
-      console.log('BQ write row:', JSON.stringify(row));
+      this.log(`BQ write row keys: ${Object.keys(row).join(', ')}`);
       await this.bqStreamInsert('validated_results', [row]);
-      console.log('BQ write succeeded');
     } catch (err) {
-      console.error('BQ write error:', err);
+      this.log(`BQ write error: ${err.message}`);
       // Show error permanently (not auto-clearing) so it isn't missed
       const el = document.getElementById('processingStatus');
       if (el) { el.textContent = `⚠️ BQ write failed: ${err.message}`; el.className = 'status-warning'; }
     }
+  }
+
+  log(message) {
+    const ts = new Date().toISOString().substring(11, 23);
+    const panel = document.getElementById('debugLog');
+    if (panel) {
+      panel.textContent += `[${ts}] ${message}\n`;
+      panel.scrollTop = panel.scrollHeight;
+    }
+    console.log(`[${ts}] ${message}`);
   }
 
   showStatus(elementId, message, type) {
