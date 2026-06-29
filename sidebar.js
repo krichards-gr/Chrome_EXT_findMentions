@@ -2222,6 +2222,15 @@ Are you sure you want to continue?`);
         FROM \`${projectId}.${datasetId}.validated_results\` v LIMIT 3
       `);
       matchCheck.forEach(r => this.log(`Match check — company="${r.company}": exact=${r.exact_match}, company_only=${r.company_only_match}`));
+      if (matchCheck.length > 0 && matchCheck[0].exact_match === '0') {
+        const firstCompany = matchCheck[0].company;
+        const firstLink = sampleRows[0]?.link;
+        const linkSample = await this.bqRunQuery(
+          `SELECT link FROM \`${projectId}.${datasetId}.processed_serp_results\` WHERE company = '${firstCompany.replace(/'/g, "''")}' LIMIT 3`
+        );
+        linkSample.forEach((r, i) => this.log(`processed_serp_results link[${i}] for "${firstCompany}": "${r.link}"`));
+        this.log(`validated_results link for "${firstCompany}": "${firstLink}"`);
+      }
 
       const rawRows = await this.bqRunQuery(sql);
       this.log(`LEFT JOIN query returned ${rawRows.length} unreviewed row(s)`);
