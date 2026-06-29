@@ -2213,6 +2213,15 @@ Are you sure you want to continue?`);
       }
       const sampleRows = await this.bqRunQuery(`SELECT company, link FROM \`${projectId}.${datasetId}.validated_results\` LIMIT 3`);
       sampleRows.forEach((r, i) => this.log(`validated_results[${i}]: company="${r.company}" link="${r.link}"`));
+      const matchCheck = await this.bqRunQuery(`
+        SELECT v.company, v.link,
+          (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.processed_serp_results\` p
+            WHERE p.company = v.company AND p.link = v.link) AS exact_match,
+          (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.processed_serp_results\` p
+            WHERE p.company = v.company) AS company_only_match
+        FROM \`${projectId}.${datasetId}.validated_results\` v LIMIT 3
+      `);
+      matchCheck.forEach(r => this.log(`Match check — company="${r.company}": exact=${r.exact_match}, company_only=${r.company_only_match}`));
 
       const rawRows = await this.bqRunQuery(sql);
       this.log(`LEFT JOIN query returned ${rawRows.length} unreviewed row(s)`);
