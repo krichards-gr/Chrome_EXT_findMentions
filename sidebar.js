@@ -795,9 +795,14 @@ class CSVReviewer {
       let tab;
 
       if (preloadedTab) {
-        // Use the preloaded tab and activate it
+        // Use the preloaded tab and activate it (it may have been closed by the user)
         tab = preloadedTab;
-        await chrome.tabs.update(tab.id, { active: true });
+        try {
+          await chrome.tabs.update(tab.id, { active: true });
+        } catch (e) {
+          console.log('Preloaded tab was closed, opening new tab:', e.message);
+          tab = await chrome.tabs.create({ url: link });
+        }
         this.preloadedTabs.delete(link); // Remove from preload cache
 
         this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
@@ -827,12 +832,14 @@ class CSVReviewer {
         }, 300); // Reduced from 500ms
 
       } else {
-        // No preloaded tab, load normally
+        // No preloaded tab — navigate the active tab or create one if none exists
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        tab = activeTab;
-
-        // Navigate to the link
-        await chrome.tabs.update(tab.id, { url: link });
+        if (activeTab) {
+          tab = activeTab;
+          await chrome.tabs.update(tab.id, { url: link });
+        } else {
+          tab = await chrome.tabs.create({ url: link });
+        }
 
         // Wait for page to load, then inject content script
         let loadHandlerFired = false;
@@ -2140,25 +2147,31 @@ Are you sure you want to continue?`);
 
   async bqEnsureValidatedTable() {
     const { projectId, datasetId } = this.bqConfig;
+    const sourceTable = await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/processed_serp_results`);
+    const sourceFields = sourceTable.schema?.fields || [];
+    const validationFields = [
+      { name: 'decision', type: 'STRING' },
+      { name: 'validated_at', type: 'TIMESTAMP' }
+    ];
+    let needsRecreate = false;
     try {
-      await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
+      const existing = await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
+      const existingNames = new Set((existing.schema?.fields || []).map(f => f.name));
+      // Recreate if missing any source columns or validation columns
+      const allExpected = [...sourceFields, ...validationFields];
+      needsRecreate = allExpected.some(f => !existingNames.has(f.name));
     } catch (err) {
       if (!err.message.includes('404')) throw err;
-      // Create the table
+      needsRecreate = true; // doesn't exist yet
+    }
+    if (needsRecreate) {
+      // Drop if it exists
+      try {
+        await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`, 'DELETE');
+      } catch (e) { /* ignore 404 */ }
       await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables`, 'POST', {
         tableReference: { projectId, datasetId, tableId: 'validated_results' },
-        schema: {
-          fields: [
-            { name: 'company', type: 'STRING' },
-            { name: 'link', type: 'STRING' },
-            { name: 'decision', type: 'STRING' },
-            { name: 'sentiment', type: 'STRING' },
-            { name: 'topic', type: 'STRING' },
-            { name: 'sub_topic', type: 'STRING' },
-            { name: 'date', type: 'STRING' },
-            { name: 'validated_at', type: 'TIMESTAMP' }
-          ]
-        }
+        schema: { fields: [...sourceFields, ...validationFields] }
       });
     }
   }
@@ -2223,14 +2236,11 @@ Are you sure you want to continue?`);
 
   async writeValidationToBigQuery(entry, decision) {
     try {
+      // Spread all source columns; strip the local-only KEEP/DELETE field
+      const { [this.cols.keepDelete]: _kd, ...sourceFields } = entry;
       const row = {
-        company: entry[this.cols.company] || '',
-        link: entry.link || '',
+        ...sourceFields,
         decision,
-        sentiment: entry[this.cols.sentiment] || '',
-        topic: entry[this.cols.topic] || '',
-        sub_topic: entry[this.cols.subtopic] || '',
-        date: entry[this.cols.date] || '',
         validated_at: new Date().toISOString()
       };
       await this.bqStreamInsert('validated_results', [row]);
