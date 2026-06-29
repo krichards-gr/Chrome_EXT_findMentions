@@ -723,18 +723,15 @@
         <!-- BigQuery Mode -->
         <div id="bqSection" style="display: none;">
           <div class="file-section">
-            <h4>☁️ BigQuery Configuration</h4>
+            <h4>☁️ BigQuery</h4>
             <p class="bq-note">
-              Add this redirect URI to your OAuth 2.0 client in GCP Console
-              (APIs &amp; Services → Credentials → your Web client → Authorised redirect URIs):
+              Redirect URI for GCP Console → OAuth client → Authorised redirect URIs:
               <code class="bq-redirect-uri" id="bqRedirectUri">Loading…</code>
             </p>
             <input type="hidden" id="bqProjectId" value="sri-benchmarking-databases" />
-            <input type="text" id="bqDatasetId" class="bq-input" placeholder="Dataset ID (e.g. coverage_collector)" />
+            <input type="hidden" id="bqDatasetId" value="coverage_collector" />
             <input type="hidden" id="bqClientId" value="434903546449-umed7pni0pcl0lfoevgbouedqq12hrmc.apps.googleusercontent.com" />
-            <button id="bqSaveConfig" class="secondary-btn">💾 Save Config</button>
-            <div id="bqConfigStatus"></div>
-            <button id="bqConnect" class="secondary-btn" style="margin-top: 6px;">🔗 Sign in with Google</button>
+            <button id="bqConnect" class="secondary-btn">🔗 Sign in with Google</button>
             <div id="bqAuthStatus" style="font-size: 12px; color: #718096; margin: 4px 0;"></div>
           </div>
 

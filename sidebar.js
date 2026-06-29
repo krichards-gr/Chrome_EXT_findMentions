@@ -71,7 +71,6 @@ class CSVReviewer {
     document.getElementById('bqModeBtn').addEventListener('click', () => this.setMode('bq'));
 
     // BigQuery buttons
-    document.getElementById('bqSaveConfig').addEventListener('click', () => this.bqSaveConfig());
     document.getElementById('bqConnect').addEventListener('click', () => this.bqConnect());
     document.getElementById('bqLoad').addEventListener('click', () => this.bqLoadData());
 
@@ -2035,20 +2034,6 @@ Are you sure you want to continue?`);
     document.getElementById('bqSection').style.display = this.bqMode ? 'block' : 'none';
     document.getElementById('csvModeBtn').classList.toggle('mode-btn-active', !this.bqMode);
     document.getElementById('bqModeBtn').classList.toggle('mode-btn-active', this.bqMode);
-  }
-
-  bqSaveConfig() {
-    const projectId = document.getElementById('bqProjectId').value.trim();
-    const datasetId = document.getElementById('bqDatasetId').value.trim();
-    const clientId = document.getElementById('bqClientId').value.trim();
-    if (!projectId || !clientId) {
-      this.showStatus('bqConfigStatus', '⚠️ Project ID and Client ID are required', 'warning');
-      return;
-    }
-    this.bqConfig = { projectId, datasetId: datasetId || 'coverage_collector', clientId };
-    this.saveState();
-    this.showStatus('bqConfigStatus', '✅ Config saved', 'success');
-    document.getElementById('bqConnect').disabled = false;
   }
 
   async bqConnect() {
