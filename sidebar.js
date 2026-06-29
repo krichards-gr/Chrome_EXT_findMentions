@@ -1705,16 +1705,16 @@ class CSVReviewer {
 
       await this.saveState();
 
-      if (this.bqMode) {
-        await this.writeValidationToBigQuery(baseEntry, tag);
-      }
-
       const emoji = tag === 'KEEP' ? '✅' : '❌';
       const dupCount = this._skipCount || 0;
       if (dupCount > 0) {
         this.showStatus('processingStatus', `${emoji} Tagged as ${tag} — created ${dupCount} duplicate row(s) for additional companies`, 'success');
       } else {
         this.showStatus('processingStatus', `${emoji} Tagged as ${tag}`, 'success');
+      }
+
+      if (this.bqMode) {
+        await this.writeValidationToBigQuery(baseEntry, tag);
       }
 
       // Get the current tab before moving to next entry
@@ -2234,10 +2234,14 @@ Are you sure you want to continue?`);
         decision,
         validated_at: new Date().toISOString()
       };
+      console.log('BQ write row:', JSON.stringify(row));
       await this.bqStreamInsert('validated_results', [row]);
+      console.log('BQ write succeeded');
     } catch (err) {
       console.error('BQ write error:', err);
-      this.showStatus('processingStatus', `⚠️ BQ write failed: ${err.message}`, 'warning');
+      // Show error permanently (not auto-clearing) so it isn't missed
+      const el = document.getElementById('processingStatus');
+      if (el) { el.textContent = `⚠️ BQ write failed: ${err.message}`; el.className = 'status-warning'; }
     }
   }
 
