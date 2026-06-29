@@ -1,0 +1,45 @@
+company,outlet,date,sentiment,topic,sub_topic,title,description,article_text,link,products,executives
+Pfizer,Reuters,2026-04-22,POSITIVE,Corporate Financials & Earnings,Other Financial Performance Metrics,Pfizer Q1 Earnings Beat Expectations,"Pfizer reported strong Q1 earnings, beating analyst expectations on revenue and EPS.","Pfizer Inc. reported first-quarter earnings on Tuesday that beat Wall Street expectations across the board.
+
+The pharmaceutical giant said net income rose 12% to $4.2 billion, or $0.74 per share. Analysts polled by FactSet had expected earnings of $0.68 per share.
+
+Revenue climbed 8% to $13.7 billion, driven by strong demand for its vaccines and oncology portfolio, which offset a continued decline in COVID-19 product sales.
+
+""We are very pleased with our strong start to 2026,"" said CEO Albert Bourla in a statement. ""Our diversified portfolio and robust pipeline continue to deliver meaningful value for patients and shareholders.""
+
+The company raised its full-year guidance, now expecting adjusted earnings of $2.95 to $3.05 per share, up from the previous range of $2.80 to $2.95.",https://www.reuters.com/business/healthcare/pfizer-q1-earnings-2026-04-22/,"['COMIRNATY', 'PAXLOVID']","['Albert Bourla']"
+Eli Lilly,Bloomberg Law,2026-03-31 20:01:55+00:00,NEUTRAL,Legal Action,[Lawsuit Focus] Lawsuit,Eli Lilly Faces Mounjaro Patent Challenge,"Generic drugmakers challenge key Mounjaro patent in federal court, setting up multi-year litigation.","A coalition of generic drug manufacturers filed a patent challenge against Eli Lilly's blockbuster weight-loss drug Mounjaro in federal court on Monday.
+
+The lawsuit, filed in the District of Delaware, claims that Lilly's patents covering the active ingredient tirzepatide are invalid and unenforceable due to prior art and obviousness.
+
+Lilly said in a statement it would ""vigorously defend"" its intellectual property rights and was confident in the strength of its patents.
+
+Legal analysts said the case is unlikely to be resolved before 2028 at the earliest, giving Lilly several more years of exclusivity even if the challenge ultimately succeeds.",https://news.bloomberglaw.com/securities-law/lilly-mounjaro-patent-challenge-2026-03-31,['MOUNJARO'],['David Ricks']
+Johnson & Johnson,AP,2026-04-21 04:00:09.759000+00:00,NEGATIVE,Society & Economy,Drug Pricing,J&J Drug Pricing Under Senate Scrutiny,"Senate health committee grills J&J executives over US drug prices being multiples of what other countries pay.","Johnson & Johnson executives faced pointed questions from a Senate health panel on Tuesday over the company's drug pricing practices in the United States.
+
+Senator Bernie Sanders, who chairs the committee, accused J&J of charging American patients and insurers up to ten times more for drugs than patients in Canada, Germany, and Japan pay for the same medicines.
+
+J&J's chief executive pushed back, arguing that high US prices fund the billions in research and development costs that make new medicines possible.
+
+The hearing comes as Congress debates legislation that would allow Medicare to negotiate prices on a broader range of drugs than current law permits.",https://apnews.com/article/johnson-johnson-drug-pricing-senate-hearing-2026-04-21,[],['Joaquin Duato']
+AbbVie,Financial Times,2026-04-15,POSITIVE,Pipeline & Portfolio,[Treatment/Product] Development,AbbVie Pipeline Update Impresses Analysts,"AbbVie provides upbeat pipeline readout with multiple late-stage programs showing promise.","AbbVie delivered a broadly positive pipeline update at its annual R&D day on Wednesday, with analysts pointing to strong data from its immunology and oncology programs as highlights.
+
+The company said its next-generation immunology candidate had demonstrated efficacy comparable to its blockbuster drug Skyrizi in a head-to-head study, raising hopes that it could extend the company's dominance in the space well beyond the current patent cycle.
+
+Shares rose 4% on the news, with several analysts upgrading their price targets.
+
+""This is the pipeline update the market has been waiting for,"" wrote one analyst in a note to clients.",https://www.ft.com/content/abbvie-pipeline-rd-day-2026-04-15,"['SKYRIZI', 'RINVOQ']",[]
+Merck,STAT News,2026-04-10,NEUTRAL,Corporate operations,Personnel Management,Merck Names New Chief Scientific Officer,"Merck appoints Dr. Elena Vasquez as Chief Scientific Officer, succeeding Roger Perlmutter who held the role for a decade.","Merck & Co. on Thursday named Dr. Elena Vasquez as its new Chief Scientific Officer, effective June 1.
+
+Dr. Vasquez joins from Genentech, where she led oncology research for the past six years. She will oversee Merck's global research and development operations, which employ more than 17,000 scientists worldwide.
+
+The appointment comes as Merck faces increasing pressure to fill its pipeline ahead of the 2028 patent expiration of Keytruda, its top-selling cancer drug that generated $25 billion in sales last year.
+
+Current CSO Roger Perlmutter, who has held the role for ten years, will transition to a senior advisory position.",https://www.statnews.com/2026/04/10/merck-names-new-cso-vasquez/,[],['Elena Vasquez']
+GSK,The Guardian,2026-01-15,NEGATIVE,Legal Action,[Lawsuit Focus] Settlement,GSK Reaches Zantac Settlement Agreement,"GSK agrees to pay $2.2 billion to settle thousands of lawsuits alleging its Zantac heartburn drug caused cancer.","GlaxoSmithKline has agreed to pay $2.2 billion to settle approximately 80,000 lawsuits in the United States alleging that its former heartburn medication Zantac caused cancer, the company announced on Wednesday.
+
+The settlement, which GSK said does not constitute an admission of liability, resolves the majority of claims filed against the company in state and federal courts.
+
+Plaintiffs alleged that ranitidine, the active ingredient in Zantac, was unstable and could degrade into a probable carcinogen called NDMA under certain storage conditions.
+
+GSK has consistently denied that Zantac caused cancer, and the company said it agreed to settle to avoid the uncertainty and expense of further litigation.",https://www.theguardian.com/business/2026/jan/15/gsk-zantac-settlement-2-billion,[],[]

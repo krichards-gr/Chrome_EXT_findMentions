@@ -7,7 +7,8 @@
       "Bash(python /tmp/read_xlsx.py)",
       "Bash(python:*)",
       "Bash(curl:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\krichards\\\\OneDrive - Bradley Media Holdings, Inc\\\\Documents\\\\GitHub\\\\Chrome_EXT_findMentions\\\\.claude\\\\worktrees\\\\gifted-tu-c4360f\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if \\($_.PSIsContainer\\) {\"Dir\"} else {\"File\"}}})"
     ]
   }
 }
