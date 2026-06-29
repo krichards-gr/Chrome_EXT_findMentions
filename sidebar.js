@@ -2109,12 +2109,14 @@ Are you sure you want to continue?`);
     return json;
   }
 
-  async bqRunQuery(sql) {
+  async bqRunQuery(sql, queryParameters = null) {
     const { projectId } = this.bqConfig;
     this.log(`BQ query:\n${sql.trim()}`);
     // Start async job
+    const queryConfig = { query: sql, useLegacySql: false };
+    if (queryParameters) queryConfig.queryParameters = queryParameters;
     const job = await this.bqRequest(`projects/${projectId}/jobs`, 'POST', {
-      configuration: { query: { query: sql, useLegacySql: false } }
+      configuration: { query: queryConfig }
     });
     const jobId = job.jobReference.jobId;
     // Poll until done
@@ -2258,25 +2260,24 @@ Are you sure you want to continue?`);
   async writeValidationToBigQuery(entry, decision) {
     try {
       const { projectId, datasetId } = this.bqConfig;
-      // Strip the local-only KEEP/DELETE field; add validation columns
       const { [this.cols.keepDelete]: _kd, ...sourceFields } = entry;
       const row = { ...sourceFields, decision, validated_at: new Date().toISOString() };
 
-      // Escape a value for inline SQL — avoids streaming buffer JOIN issues
-      const sqlVal = (col, val) => {
-        if (val === null || val === undefined || val === '') return 'NULL';
-        const s = String(val).replace(/'/g, "''");
-        if (col === 'validated_at') return `TIMESTAMP('${s}')`;
-        return `'${s}'`;
-      };
-
       const cols = Object.keys(row);
+      // BQ param names must be [a-zA-Z][a-zA-Z0-9_]* — prefix with p_ to be safe
+      const pname = c => `p_${c.replace(/[^a-zA-Z0-9_]/g, '_')}`;
       const colList = cols.map(c => `\`${c}\``).join(', ');
-      const valList = cols.map(c => sqlVal(c, row[c])).join(', ');
-      const sql = `INSERT INTO \`${projectId}.${datasetId}.validated_results\` (${colList}) VALUES (${valList})`;
+      const paramList = cols.map(c => `@${pname(c)}`).join(', ');
+      const sql = `INSERT INTO \`${projectId}.${datasetId}.validated_results\` (${colList}) VALUES (${paramList})`;
+
+      const queryParameters = cols.map(c => ({
+        name: pname(c),
+        parameterType: { type: c === 'validated_at' ? 'TIMESTAMP' : 'STRING' },
+        parameterValue: { value: (row[c] === null || row[c] === undefined) ? null : String(row[c]) }
+      }));
 
       this.log(`BQ DML insert: ${entry[this.cols.company]} / ${entry.link}`);
-      await this.bqRunQuery(sql);
+      await this.bqRunQuery(sql, queryParameters);
       this.log('BQ DML insert succeeded');
     } catch (err) {
       this.log(`BQ write error: ${err.message}`);
