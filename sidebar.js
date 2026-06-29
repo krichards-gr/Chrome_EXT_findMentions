@@ -2153,7 +2153,11 @@ Are you sure you want to continue?`);
     const { projectId, datasetId } = this.bqConfig;
     const endpoint = `projects/${projectId}/datasets/${datasetId}/tables/${table}/insertAll`;
     this.log(`BQ insert → ${table} (${rows.length} row(s))`);
-    const body = { rows: rows.map((r, i) => ({ insertId: `row-${Date.now()}-${i}`, json: r })) };
+    const body = {
+      skipInvalidRows: false,
+      ignoreUnknownValues: true,
+      rows: rows.map((r, i) => ({ insertId: `row-${Date.now()}-${i}`, json: r }))
+    };
     const result = await this.bqRequest(endpoint, 'POST', body);
     if (result.insertErrors && result.insertErrors.length > 0) {
       const msgs = result.insertErrors.map(e => e.errors.map(x => x.message).join('; ')).join(' | ');
@@ -2168,8 +2172,9 @@ Are you sure you want to continue?`);
     const { projectId, datasetId } = this.bqConfig;
     // Check if table already exists with the correct schema
     try {
-      await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
-      this.log('validated_results table exists — leaving it alone');
+      const existing = await this.bqRequest(`projects/${projectId}/datasets/${datasetId}/tables/validated_results`);
+      const cols = (existing.schema?.fields || []).map(f => f.name).join(', ');
+      this.log(`validated_results exists with columns: ${cols}`);
       return; // exists — leave it alone
     } catch (err) {
       if (!err.message.includes('404')) throw err;
