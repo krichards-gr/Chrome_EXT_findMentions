@@ -20,7 +20,7 @@ class CSVReviewer {
     };
     // BigQuery state
     this.bqMode = false;
-    this.bqConfig = { projectId: '', datasetId: 'coverage_collector', clientId: '' };
+    this.bqConfig = { projectId: 'sri-benchmarking-databases', datasetId: 'coverage_collector', clientId: '434903546449-umed7pni0pcl0lfoevgbouedqq12hrmc.apps.googleusercontent.com' };
     this.bqToken = null;
     this.bqTokenExpiry = null;
 
@@ -2001,6 +2001,8 @@ Are you sure you want to continue?`);
 
       if (result.bqConfig) {
         this.bqConfig = { ...this.bqConfig, ...result.bqConfig };
+        this.bqConfig.projectId = 'sri-benchmarking-databases';
+        this.bqConfig.clientId = '434903546449-umed7pni0pcl0lfoevgbouedqq12hrmc.apps.googleusercontent.com';
       }
       if (result.bqMode !== undefined) {
         this.bqMode = result.bqMode;
