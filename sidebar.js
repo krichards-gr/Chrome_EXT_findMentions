@@ -6,6 +6,7 @@ class CSVReviewer {
     this.currentIndex = 0;
     this.currentSentiment = '';
     this.preloadedTabs = new Map();
+    this.currentTabId = null;
     this.isProcessing = false;
     this.selectedCompanies = [];
     this._skipCount = 0;
@@ -806,6 +807,7 @@ class CSVReviewer {
           tab = await chrome.tabs.create({ url: link });
         }
         this.preloadedTabs.delete(link); // Remove from preload cache
+        this.currentTabId = tab.id;
 
         this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
         this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
@@ -842,6 +844,7 @@ class CSVReviewer {
         } else {
           tab = await chrome.tabs.create({ url: link });
         }
+        this.currentTabId = tab.id;
 
         // Wait for page to load, then inject content script
         let loadHandlerFired = false;
@@ -1279,8 +1282,14 @@ class CSVReviewer {
 
       if (preloadedTab) {
         tab = preloadedTab;
-        await chrome.tabs.update(tab.id, { active: true });
+        try {
+          await chrome.tabs.update(tab.id, { active: true });
+        } catch (e) {
+          console.log('Preloaded tab was closed, opening new tab:', e.message);
+          tab = await chrome.tabs.create({ url: link });
+        }
         this.preloadedTabs.delete(link);
+        this.currentTabId = tab.id;
 
         this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
         this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
@@ -1307,9 +1316,13 @@ class CSVReviewer {
 
       } else {
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        tab = activeTab;
-
-        await chrome.tabs.update(tab.id, { url: link });
+        if (activeTab) {
+          tab = activeTab;
+          await chrome.tabs.update(tab.id, { url: link });
+        } else {
+          tab = await chrome.tabs.create({ url: link });
+        }
+        this.currentTabId = tab.id;
 
         let loadHandlerFiredNoSkip = false;
         const loadHandler = async (tabId, changeInfo) => {
@@ -1612,46 +1625,28 @@ class CSVReviewer {
   }
 
   async preloadNextPages() {
-    const maxPreload = 2; // Preload next 2 pages
-    const maxConcurrentPreloads = 6; // Cap total preloaded tabs to avoid memory issues
-    if (this.preloadedTabs.size >= maxConcurrentPreloads) return;
+    const maxPreload = 1; // Preload 1 page ahead (total: 1 active + 1 preloaded = 2 tabs)
+    if (this.preloadedTabs.size >= maxPreload) return;
     const currentWindow = await chrome.windows.getCurrent();
 
-    for (let i = 1; i <= maxPreload; i++) {
-      const nextIndex = this.currentIndex + i;
+    const nextIndex = this.currentIndex + 1;
+    if (nextIndex >= this.csvData.length) return;
 
-      if (nextIndex >= this.csvData.length) break; // No more entries to preload
+    const nextEntry = this.csvData[nextIndex];
+    const nextLink = nextEntry.link;
 
-      const nextEntry = this.csvData[nextIndex];
-      const nextLink = nextEntry.link;
+    if (!nextLink || this.preloadedTabs.has(nextLink)) return;
 
-      if (!nextLink || this.preloadedTabs.has(nextLink)) continue; // Skip if no link or already preloaded
-
-      try {
-        // Create a simple background tab (faster than windows)
-        const preloadTab = await chrome.tabs.create({
-          url: nextLink,
-          active: false, // Create in background
-          windowId: currentWindow.id
-        });
-
-        // Store the preloaded tab
-        this.preloadedTabs.set(nextLink, preloadTab);
-
-        console.log(`Preloaded page ${i}: ${this.truncateUrl(nextLink)}`);
-
-        // Clean up old preloaded tabs after a delay (in case they're not used)
-        setTimeout(() => {
-          if (this.preloadedTabs.has(nextLink)) {
-            chrome.tabs.remove(preloadTab.id).catch(() => { }); // Ignore errors
-            this.preloadedTabs.delete(nextLink);
-            console.log(`Auto-cleaned unused preload: ${this.truncateUrl(nextLink)}`);
-          }
-        }, 180000); // 3 minute cleanup timeout (reduced from 5)
-
-      } catch (error) {
-        console.error(`Failed to preload page ${i}:`, error);
-      }
+    try {
+      const preloadTab = await chrome.tabs.create({
+        url: nextLink,
+        active: false,
+        windowId: currentWindow.id
+      });
+      this.preloadedTabs.set(nextLink, preloadTab);
+      console.log(`Preloaded next page: ${this.truncateUrl(nextLink)}`);
+    } catch (error) {
+      console.error('Failed to preload next page:', error);
     }
   }
 
@@ -1719,14 +1714,9 @@ class CSVReviewer {
         await this.writeValidationToBigQuery(baseEntry, tag);
       }
 
-      // Get the current tab before moving to next entry
-      // Use catch to handle potential errors if tab is already gone
-      let currentTab = null;
-      try {
-        [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      } catch (e) {
-        console.log('Could not get current tab to close:', e);
-      }
+      // Capture and clear the working tab ID before moving on
+      const closingTabId = this.currentTabId;
+      this.currentTabId = null;
 
       // Clean up any unused preloaded tabs
       this.cleanupUnusedPreloadedTabs();
@@ -1739,9 +1729,9 @@ class CSVReviewer {
       if (this.currentIndex < this.csvData.length) {
         // Close the current tab after a brief delay (let user see the tag feedback)
         setTimeout(async () => {
-          if (currentTab) {
+          if (closingTabId) {
             try {
-              await chrome.tabs.remove(currentTab.id);
+              await chrome.tabs.remove(closingTabId);
               console.log(`Closed tab after tagging: ${this.truncateUrl(this.csvData[this.currentIndex - 1].link)}`);
             } catch (error) {
               console.log('Tab may have already been closed:', error);
@@ -1763,9 +1753,9 @@ class CSVReviewer {
 
         // Close the final tab and clean up all remaining preloaded tabs
         setTimeout(async () => {
-          if (currentTab) {
+          if (closingTabId) {
             try {
-              await chrome.tabs.remove(currentTab.id);
+              await chrome.tabs.remove(closingTabId);
             } catch (error) {
               console.log('Final tab may have already been closed:', error);
             }
