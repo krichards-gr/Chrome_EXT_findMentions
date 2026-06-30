@@ -779,6 +779,8 @@ class CSVReviewer {
     if (this.currentIndex >= this.csvData.length) {
       this.showStatus('processingStatus', '🎉 All entries processed!', 'success');
       this.updateStepIndicators();
+      this.isProcessing = false;
+      this.setProcessingState(false);
       return;
     }
 
@@ -788,6 +790,8 @@ class CSVReviewer {
 
     if (!link) {
       this.showStatus('processingStatus', '⚠️ Invalid entry - missing link', 'warning');
+      this.isProcessing = false;
+      this.setProcessingState(false);
       return;
     }
 
@@ -1268,6 +1272,8 @@ class CSVReviewer {
     if (this.currentIndex >= this.csvData.length) {
       this.showStatus('processingStatus', '🎉 All entries processed!', 'success');
       this.updateStepIndicators();
+      this.isProcessing = false;
+      this.setProcessingState(false);
       return;
     }
 
@@ -1487,112 +1493,127 @@ class CSVReviewer {
   }
 
   showReviewSection() {
-    const entry = this.csvData[this.currentIndex];
-    const sentiment = entry[this.cols.sentiment];
-    const topic = entry[this.cols.topic];
-    const subtopic = entry[this.cols.subtopic];
-    const date = entry[this.cols.date];
-
-    // Show company selector if company is empty
-    const companyControls = document.getElementById('companyControls');
-    if (!(entry[this.cols.company] || '').trim()) {
-      this.buildCompanyChecklist();
-
-      // Pre-check companies that were detected on the page
-      if (this.detectedCompanies && this.detectedCompanies.length > 0) {
-        const checkboxes = document.querySelectorAll('#companyChecklist input[type="checkbox"]');
-        checkboxes.forEach(cb => {
-          if (this.detectedCompanies.includes(cb.value)) {
-            cb.checked = true;
-          }
-        });
-        this.updateCompanySelection();
-        this.detectedCompanies = []; // Clear after applying
-      }
-
-      companyControls.style.display = 'block';
-    } else {
-      companyControls.style.display = 'none';
-      this.selectedCompanies = [];
-    }
-
-    // Show scrape button only when content column exists and is empty
-    const scrapeControls = document.getElementById('scrapeControls');
-    if (this.cols.content) {
-      const hasContent = (entry[this.cols.content] || '').trim();
-      scrapeControls.style.display = hasContent ? 'none' : 'block';
-      document.getElementById('scrapeStatus').innerHTML = '';
-      document.getElementById('scrapeArticleBtn').disabled = false;
-    } else {
-      scrapeControls.style.display = 'none';
-    }
-
-    // Update the display
-    this.updateCurrentEntryDisplay();
-
-    // Update sentiment buttons (case-insensitive match)
-    document.querySelectorAll('.sentiment-btn').forEach(btn => btn.classList.remove('selected'));
-    if (sentiment) {
-      const normalized = sentiment.charAt(0).toUpperCase() + sentiment.slice(1).toLowerCase();
-      document.getElementById('sentiment' + normalized)?.classList.add('selected');
-    }
-
-    // Update topic dropdowns (case-insensitive match against options)
-    const topicSelect = document.getElementById('topicSelect');
-    if (topic) {
-      const matchedTopic = Array.from(topicSelect.options).find(
-        opt => opt.value.toLowerCase() === topic.toLowerCase()
-      );
-      if (matchedTopic) {
-        topicSelect.value = matchedTopic.value;
-      } else {
-        topicSelect.value = topic; // Fallback to exact value
-      }
-      // Pre-populate the edit field with the saved sub-topic before updateSubtopics()
-      // fires saveTopicSelection(); otherwise the previous entry's edit value would
-      // briefly be written into the current row.
-      document.getElementById('subtopicEdit').value = subtopic || '';
-      this.updateSubtopics();
-      setTimeout(() => {
-        const subtopicSelect = document.getElementById('subtopicSelect');
-        const subtopicEdit = document.getElementById('subtopicEdit');
-        if (subtopic) {
-          // Try to match the stored (possibly already-edited) value to an archetype option.
-          // If it doesn't match, leave the dropdown at the placeholder — the edit field still shows the saved text.
-          const matchedSub = Array.from(subtopicSelect.options).find(
-            opt => opt.value.toLowerCase() === subtopic.toLowerCase() ||
-                   this.humanizeSubtopic(opt.value).toLowerCase() === subtopic.toLowerCase()
-          );
-          if (matchedSub) {
-            subtopicSelect.value = matchedSub.value;
-          } else {
-            subtopicSelect.value = '';
-          }
-          subtopicEdit.value = subtopic;
-        } else {
-          subtopicSelect.value = '';
-          subtopicEdit.value = '';
-        }
-      }, 100); // Small delay to ensure subtopics are populated
-    } else {
-      topicSelect.value = '';
-      document.getElementById('subtopicSelect').innerHTML = '<option value="">Select Sub-topic...</option>';
-      document.getElementById('subtopicEdit').value = '';
-    }
-
-    // Update date input
-    const dateInput = document.getElementById('dateInput');
-    if (dateInput) {
-      dateInput.value = date || '';
-    }
-
-    document.getElementById('reviewSection').style.display = 'block';
-    this.updateStepIndicators();
-    this.updatePreviousEntryButton();
-
-    // Unlock UI after processing is complete
+    // Unlock the UI immediately — this must happen even if the display code below throws.
     this.isProcessing = false;
     this.setProcessingState(false);
+
+    try {
+      const entry = this.csvData[this.currentIndex];
+      if (!entry) return; // safety: nothing to display
+
+      const sentiment = entry[this.cols.sentiment];
+      const topic = entry[this.cols.topic];
+      const subtopic = entry[this.cols.subtopic];
+      const date = entry[this.cols.date];
+
+      // Show company selector if company is empty
+      const companyControls = document.getElementById('companyControls');
+      if (!(entry[this.cols.company] || '').trim()) {
+        this.buildCompanyChecklist();
+
+        // Pre-check companies that were detected on the page
+        if (this.detectedCompanies && this.detectedCompanies.length > 0) {
+          const checkboxes = document.querySelectorAll('#companyChecklist input[type="checkbox"]');
+          checkboxes.forEach(cb => {
+            if (this.detectedCompanies.includes(cb.value)) {
+              cb.checked = true;
+            }
+          });
+          this.updateCompanySelection();
+          this.detectedCompanies = []; // Clear after applying
+        }
+
+        if (companyControls) companyControls.style.display = 'block';
+      } else {
+        if (companyControls) companyControls.style.display = 'none';
+        this.selectedCompanies = [];
+      }
+
+      // Show scrape button only when content column exists and is empty
+      const scrapeControls = document.getElementById('scrapeControls');
+      if (this.cols.content) {
+        const hasContent = (entry[this.cols.content] || '').trim();
+        if (scrapeControls) scrapeControls.style.display = hasContent ? 'none' : 'block';
+        const scrapeStatus = document.getElementById('scrapeStatus');
+        if (scrapeStatus) scrapeStatus.innerHTML = '';
+        const scrapeBtn = document.getElementById('scrapeArticleBtn');
+        if (scrapeBtn) scrapeBtn.disabled = false;
+      } else {
+        if (scrapeControls) scrapeControls.style.display = 'none';
+      }
+
+      // Update the display
+      this.updateCurrentEntryDisplay();
+
+      // Update sentiment buttons (case-insensitive match)
+      document.querySelectorAll('.sentiment-btn').forEach(btn => btn.classList.remove('selected'));
+      if (sentiment) {
+        const normalized = sentiment.charAt(0).toUpperCase() + sentiment.slice(1).toLowerCase();
+        document.getElementById('sentiment' + normalized)?.classList.add('selected');
+      }
+
+      // Update topic dropdowns (case-insensitive match against options)
+      const topicSelect = document.getElementById('topicSelect');
+      if (topicSelect) {
+        if (topic) {
+          const matchedTopic = Array.from(topicSelect.options).find(
+            opt => opt.value.toLowerCase() === topic.toLowerCase()
+          );
+          if (matchedTopic) {
+            topicSelect.value = matchedTopic.value;
+          } else {
+            topicSelect.value = topic; // Fallback to exact value
+          }
+          // Pre-populate the edit field with the saved sub-topic before updateSubtopics()
+          // fires saveTopicSelection(); otherwise the previous entry's edit value would
+          // briefly be written into the current row.
+          const subtopicEditEl = document.getElementById('subtopicEdit');
+          if (subtopicEditEl) subtopicEditEl.value = subtopic || '';
+          this.updateSubtopics();
+          setTimeout(() => {
+            const subtopicSelect = document.getElementById('subtopicSelect');
+            const subtopicEdit = document.getElementById('subtopicEdit');
+            if (!subtopicSelect || !subtopicEdit) return;
+            if (subtopic) {
+              // Try to match the stored (possibly already-edited) value to an archetype option.
+              // If it doesn't match, leave the dropdown at the placeholder — the edit field still shows the saved text.
+              const matchedSub = Array.from(subtopicSelect.options).find(
+                opt => opt.value.toLowerCase() === subtopic.toLowerCase() ||
+                       this.humanizeSubtopic(opt.value).toLowerCase() === subtopic.toLowerCase()
+              );
+              if (matchedSub) {
+                subtopicSelect.value = matchedSub.value;
+              } else {
+                subtopicSelect.value = '';
+              }
+              subtopicEdit.value = subtopic;
+            } else {
+              subtopicSelect.value = '';
+              subtopicEdit.value = '';
+            }
+          }, 100); // Small delay to ensure subtopics are populated
+        } else {
+          topicSelect.value = '';
+          const subtopicSelectEl = document.getElementById('subtopicSelect');
+          if (subtopicSelectEl) subtopicSelectEl.innerHTML = '<option value="">Select Sub-topic...</option>';
+          const subtopicEditEl = document.getElementById('subtopicEdit');
+          if (subtopicEditEl) subtopicEditEl.value = '';
+        }
+      }
+
+      // Update date input
+      const dateInput = document.getElementById('dateInput');
+      if (dateInput) {
+        dateInput.value = date || '';
+      }
+
+      const reviewSection = document.getElementById('reviewSection');
+      if (reviewSection) reviewSection.style.display = 'block';
+      this.updateStepIndicators();
+      this.updatePreviousEntryButton();
+    } catch (e) {
+      console.error('showReviewSection display error (UI already unlocked):', e);
+    }
   }
 
   setProcessingState(isProcessing) {
