@@ -2228,11 +2228,20 @@ Are you sure you want to continue?`);
       matchCheck.forEach(r => this.log(`Match check — company="${r.company}": exact=${r.exact_match}, company_only=${r.company_only_match}`));
       if (matchCheck.length > 0 && matchCheck[0].exact_match === '0') {
         const firstCompany = matchCheck[0].company;
-        const firstLink = sampleRows[0]?.link;
-        const linkSample = await this.bqRunQuery(
-          `SELECT link FROM \`${projectId}.${datasetId}.processed_serp_results\` WHERE company = '${firstCompany.replace(/'/g, "''")}' LIMIT 3`
+        const firstLink = matchCheck[0].link;
+        // Check if TRIM fixes the match (whitespace issue)
+        const trimCheck = await this.bqRunQuery(
+          `SELECT COUNT(*) AS cnt FROM \`${projectId}.${datasetId}.processed_serp_results\` p WHERE p.company = @company AND TRIM(p.link) = TRIM(@link)`,
+          [
+            { name: 'company', parameterType: { type: 'STRING' }, parameterValue: { value: firstCompany } },
+            { name: 'link', parameterType: { type: 'STRING' }, parameterValue: { value: firstLink } }
+          ]
         );
-        linkSample.forEach((r, i) => this.log(`processed_serp_results link[${i}] for "${firstCompany}": "${r.link}"`));
+        this.log(`Trim-match check for "${firstCompany}": ${trimCheck[0]?.cnt} row(s) (if >0, whitespace is the issue)`);
+        const linkSample = await this.bqRunQuery(
+          `SELECT link, TO_HEX(CAST(link AS BYTES)) AS hex_link FROM \`${projectId}.${datasetId}.processed_serp_results\` WHERE company = '${firstCompany.replace(/'/g, "''")}' LIMIT 2`
+        );
+        linkSample.forEach((r, i) => this.log(`processed_serp_results link[${i}] for "${firstCompany}": "${r.link}" hex=${r.hex_link?.substring(0, 40)}`));
         this.log(`validated_results link for "${firstCompany}": "${firstLink}"`);
       }
 
@@ -2300,6 +2309,17 @@ Are you sure you want to continue?`);
       this.log(`BQ DML insert: ${entry[this.cols.company]} / ${entry.link}`);
       await this.bqRunQuery(sql, queryParameters);
       this.log('BQ DML insert succeeded');
+      // Post-write verification: check if this row can be found via JOIN
+      const verifyLink = entry.link;
+      const verifyCompany = entry[this.cols.company];
+      const verifyRows = await this.bqRunQuery(
+        `SELECT COUNT(*) AS cnt FROM \`${projectId}.${datasetId}.processed_serp_results\` WHERE company = @company AND link = @link`,
+        [
+          { name: 'company', parameterType: { type: 'STRING' }, parameterValue: { value: verifyCompany } },
+          { name: 'link', parameterType: { type: 'STRING' }, parameterValue: { value: verifyLink } }
+        ]
+      );
+      this.log(`Post-write verify: processed_serp_results has ${verifyRows[0]?.cnt} row(s) with company="${verifyCompany}" AND link="${verifyLink}"`);
     } catch (err) {
       this.log(`BQ write error: ${err.message}`);
       const el = document.getElementById('processingStatus');
