@@ -2218,6 +2218,31 @@ Are you sure you want to continue?`);
       if (diagRows.length > 0) {
         this.log(`Diagnostic: validated_results has ${diagRows[0].validated_count} rows, ${diagRows[0].matched_count} match processed_serp_results on company+link (normalized)`);
       }
+      // Side-by-side link comparison: look up each validated row by title in processed_serp_results
+      if (diagRows.length > 0 && diagRows[0].validated_count !== '0') {
+        const linkCompare = await this.bqRunQuery(`
+          SELECT
+            v.company,
+            v.link AS v_link,
+            p.link AS p_link,
+            TO_HEX(CAST(COALESCE(v.link,'') AS BYTES)) AS v_hex,
+            TO_HEX(CAST(COALESCE(p.link,'') AS BYTES)) AS p_hex
+          FROM \`${projectId}.${datasetId}.validated_results\` v
+          LEFT JOIN \`${projectId}.${datasetId}.processed_serp_results\` p
+            ON LOWER(TRIM(p.company)) = LOWER(TRIM(v.company))
+           AND LOWER(TRIM(p.title)) = LOWER(TRIM(v.title))
+          LIMIT 3
+        `);
+        linkCompare.forEach((r, i) => {
+          this.log(`link compare[${i}] company="${r.company}"`);
+          this.log(`  validated_results  link: "${r.v_link}"`);
+          this.log(`  processed_serp    link: "${r.p_link}"`);
+          if (r.v_link !== r.p_link) {
+            this.log(`  v_hex: ${r.v_hex?.substring(0, 80)}`);
+            this.log(`  p_hex: ${r.p_hex?.substring(0, 80)}`);
+          }
+        });
+      }
 
       const rawRows = await this.bqRunQuery(sql);
       this.log(`LEFT JOIN query returned ${rawRows.length} unreviewed row(s)`);
