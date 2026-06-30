@@ -3,6 +3,8 @@ class CSVReviewer {
     this.csvData = [];
     this.topicData = [];
     this.variationsData = [];
+    this.topicHierarchy = {};
+    this.variationsMap = {};
     this.currentIndex = 0;
     this.currentSentiment = '';
     this.preloadedTabs = new Map();
@@ -474,7 +476,7 @@ class CSVReviewer {
     const subtopicSelect = document.getElementById('subtopicSelect');
 
     console.log('Selected topic:', selectedTopic); // Debug log
-    console.log('Available topics in hierarchy:', Object.keys(this.topicHierarchy)); // Debug log
+    console.log('Available topics in hierarchy:', Object.keys(this.topicHierarchy || {})); // Debug log
 
     subtopicSelect.innerHTML = '<option value="">Select Sub-topic...</option>';
 
