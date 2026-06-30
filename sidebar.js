@@ -829,8 +829,8 @@ class CSVReviewer {
             this.preloadNextPages();
           } catch (error) {
             console.error('Error in searchAndHighlight:', error);
-            this.showStatus('processingStatus', `❌ Error searching page: ${error.message}`, 'warning');
-            this.updateLoadingIndicator('ready', 'Error - Try again');
+            this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
+            this.updateLoadingIndicator('ready', 'Review manually');
             this.showReviewSection(); // Still show review so UI isn't stuck
           }
         }, 300); // Reduced from 500ms
@@ -873,8 +873,8 @@ class CSVReviewer {
                 this.preloadNextPages();
               } catch (error) {
                 console.error('Error in searchAndHighlight:', error);
-                this.showStatus('processingStatus', '❌ Error searching page — review manually', 'warning');
-                this.updateLoadingIndicator('ready', 'Error - Try again');
+                this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
+                this.updateLoadingIndicator('ready', 'Review manually');
                 this.showReviewSection(); // must unlock isProcessing
               }
             }, 1000); // Reduced from 1500ms
@@ -916,16 +916,22 @@ class CSVReviewer {
       // Ping the content script to see if it's loaded
       await chrome.tabs.sendMessage(tabId, { action: 'ping' });
     } catch (e) {
-      // Content script not loaded — inject it
+      // Content script not loaded — inject it (tab may be mid-navigation; catch injection failures gracefully)
       console.log('Content script not found, injecting...');
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ['content.js']
-      });
-      await chrome.scripting.insertCSS({
-        target: { tabId },
-        files: ['content.css']
-      });
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content.js']
+        });
+        await chrome.scripting.insertCSS({
+          target: { tabId },
+          files: ['content.css']
+        });
+      } catch (injectErr) {
+        // Injection failed (e.g. tab navigated away or restricted URL) — log and continue.
+        // The page will still show in the review section; user can tag manually.
+        console.warn('Content script injection failed (page may have navigated or be restricted):', injectErr.message);
+      }
     }
   }
 
@@ -1308,8 +1314,8 @@ class CSVReviewer {
             this.preloadNextPages();
           } catch (error) {
             console.error('Error in searchAndHighlight:', error);
-            this.showStatus('processingStatus', `❌ Error searching page: ${error.message}`, 'warning');
-            this.updateLoadingIndicator('ready', 'Error - Try again');
+            this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
+            this.updateLoadingIndicator('ready', 'Review manually');
             this.showReviewSection();
           }
         }, 300);
@@ -1347,8 +1353,8 @@ class CSVReviewer {
                 this.preloadNextPages();
               } catch (error) {
                 console.error('Error in searchAndHighlight:', error);
-                this.showStatus('processingStatus', '❌ Error searching page — review manually', 'warning');
-                this.updateLoadingIndicator('ready', 'Error - Try again');
+                this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
+                this.updateLoadingIndicator('ready', 'Review manually');
                 this.showReviewSection(); // must unlock isProcessing
               }
             }, 1000);
