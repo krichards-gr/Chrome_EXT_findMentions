@@ -2201,8 +2201,8 @@ Are you sure you want to continue?`);
         SELECT p.*
         FROM \`${projectId}.${datasetId}.processed_serp_results\` p
         LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
-          ON LOWER(TRIM(p.company)) = LOWER(TRIM(v.company))
-         AND LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+          ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+         AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
         WHERE v.link IS NULL
         ORDER BY p.company
       `;
@@ -2212,8 +2212,8 @@ Are you sure you want to continue?`);
           (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.validated_results\`) AS validated_count,
           (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.processed_serp_results\` p
             JOIN \`${projectId}.${datasetId}.validated_results\` v
-            ON LOWER(TRIM(p.company)) = LOWER(TRIM(v.company))
-           AND LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))) AS matched_count
+            ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+           AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))) AS matched_count
       `);
       if (diagRows.length > 0) {
         this.log(`Diagnostic: validated_results has ${diagRows[0].validated_count} rows, ${diagRows[0].matched_count} match processed_serp_results on company+link (normalized)`);
@@ -2229,8 +2229,8 @@ Are you sure you want to continue?`);
             TO_HEX(CAST(COALESCE(p.link,'') AS BYTES)) AS p_hex
           FROM \`${projectId}.${datasetId}.validated_results\` v
           LEFT JOIN \`${projectId}.${datasetId}.processed_serp_results\` p
-            ON LOWER(TRIM(p.company)) = LOWER(TRIM(v.company))
-           AND LOWER(TRIM(p.title)) = LOWER(TRIM(v.title))
+            ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+           AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
           LIMIT 3
         `);
         linkCompare.forEach((r, i) => {
