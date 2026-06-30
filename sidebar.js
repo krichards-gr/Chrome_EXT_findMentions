@@ -2196,26 +2196,27 @@ Are you sure you want to continue?`);
     try {
       await this.bqEnsureValidatedTable();
       const { projectId, datasetId } = this.bqConfig;
-      // Join on company+title: URLs change each collector run (Google tracking params),
-      // but article titles are stable across refreshes.
+      // LOWER+TRIM both sides to handle case/whitespace differences in stored values
       const sql = `
         SELECT p.*
         FROM \`${projectId}.${datasetId}.processed_serp_results\` p
         LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
-          ON p.company = v.company AND p.title = v.title
-        WHERE v.title IS NULL
+          ON LOWER(TRIM(p.company)) = LOWER(TRIM(v.company))
+         AND LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+        WHERE v.link IS NULL
         ORDER BY p.company
       `;
-      // Diagnostic: count validated rows and title-based matches
+      // Diagnostic: count validated rows and normalized-link matches
       const diagRows = await this.bqRunQuery(`
         SELECT
           (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.validated_results\`) AS validated_count,
           (SELECT COUNT(*) FROM \`${projectId}.${datasetId}.processed_serp_results\` p
             JOIN \`${projectId}.${datasetId}.validated_results\` v
-            ON p.company = v.company AND p.title = v.title) AS matched_count
+            ON LOWER(TRIM(p.company)) = LOWER(TRIM(v.company))
+           AND LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))) AS matched_count
       `);
       if (diagRows.length > 0) {
-        this.log(`Diagnostic: validated_results has ${diagRows[0].validated_count} rows, ${diagRows[0].matched_count} match processed_serp_results on company+title`);
+        this.log(`Diagnostic: validated_results has ${diagRows[0].validated_count} rows, ${diagRows[0].matched_count} match processed_serp_results on company+link (normalized)`);
       }
 
       const rawRows = await this.bqRunQuery(sql);
@@ -2282,17 +2283,33 @@ Are you sure you want to continue?`);
       this.log(`BQ DML insert: ${entry[this.cols.company]} / ${entry.link}`);
       await this.bqRunQuery(sql, queryParameters);
       this.log('BQ DML insert succeeded');
-      // Post-write verification: check if this row can be found via title-based JOIN
+      // Post-write verification: find the same article in processed_serp_results by title,
+      // then compare its link to what we just wrote — reveals any character-level differences.
       const verifyTitle = entry.title;
+      const verifyLink = entry.link;
       const verifyCompany = entry[this.cols.company];
       const verifyRows = await this.bqRunQuery(
-        `SELECT COUNT(*) AS cnt FROM \`${projectId}.${datasetId}.processed_serp_results\` WHERE company = @company AND title = @title`,
+        `SELECT link, TO_HEX(CAST(COALESCE(link,'') AS BYTES)) AS p_hex FROM \`${projectId}.${datasetId}.processed_serp_results\` WHERE LOWER(TRIM(company)) = LOWER(TRIM(@company)) AND LOWER(TRIM(title)) = LOWER(TRIM(@title)) LIMIT 1`,
         [
           { name: 'company', parameterType: { type: 'STRING' }, parameterValue: { value: verifyCompany } },
           { name: 'title', parameterType: { type: 'STRING' }, parameterValue: { value: verifyTitle } }
         ]
       );
-      this.log(`Post-write verify: processed_serp_results has ${verifyRows[0]?.cnt} row(s) with company="${verifyCompany}" AND title="${verifyTitle?.substring(0, 60)}"`);
+      if (verifyRows.length === 0) {
+        this.log(`Post-write verify: no row found in processed_serp_results with that company+title`);
+      } else {
+        const pLink = verifyRows[0].link;
+        const pHex = verifyRows[0].p_hex;
+        const vHex = Array.from(new TextEncoder().encode(verifyLink || '')).map(b => b.toString(16).padStart(2,'0')).join('');
+        const linksMatch = pLink === verifyLink;
+        this.log(`Post-write verify link match: ${linksMatch}`);
+        if (!linksMatch) {
+          this.log(`  processed_serp_results link: "${pLink}"`);
+          this.log(`  validated_results link:      "${verifyLink}"`);
+          this.log(`  p hex prefix: ${pHex?.substring(0, 60)}`);
+          this.log(`  v hex prefix: ${vHex.substring(0, 60)}`);
+        }
+      }
     } catch (err) {
       this.log(`BQ write error: ${err.message}`);
       const el = document.getElementById('processingStatus');
