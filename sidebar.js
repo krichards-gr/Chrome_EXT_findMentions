@@ -2021,6 +2021,10 @@ Are you sure you want to continue?`);
       if (this.bqConfig.projectId) document.getElementById('bqProjectId').value = this.bqConfig.projectId;
       if (this.bqConfig.datasetId) document.getElementById('bqDatasetId').value = this.bqConfig.datasetId;
       if (this.bqConfig.clientId) document.getElementById('bqClientId').value = this.bqConfig.clientId;
+      if (this.bqMode && this.csvData.length > 0) {
+        this.log(`loadState: restored ${this.csvData.length} cached BQ entries from previous session — these may not reflect current validated_results. Click "Load from BigQuery" to refresh before tagging.`);
+        this.showStatus('bqStatus', `⚠️ ${this.csvData.length} cached entries from previous session — click Load from BigQuery to refresh`, 'warning');
+      }
     } catch (error) {
       console.error('Error loading state:', error);
     }
