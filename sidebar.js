@@ -1207,6 +1207,10 @@ class CSVReviewer {
 
       console.log(`🔙 Going from entry ${this.currentIndex + 1} to entry ${this.currentIndex}`);
 
+      // Capture and clear the working tab ID before moving on (same pattern as tagEntry)
+      const closingTabId = this.currentTabId;
+      this.currentTabId = null;
+
       // Clean up any preloaded tabs
       this.cleanupUnusedPreloadedTabs();
 
@@ -1216,12 +1220,17 @@ class CSVReviewer {
 
       this.showStatus('processingStatus', `⏪ Going back to entry ${this.currentIndex + 1}`, 'info');
 
-      // Process the previous entry (no skip — user explicitly wants to revisit)
-      console.log(`🔙 Processing entry: ${this.csvData[this.currentIndex]?.[this.cols.company]} - ${this.csvData[this.currentIndex]?.link}`);
-
-      // processCurrentEntryNoSkip will load the page and show review section without skipping filled entries
-      await this.processCurrentEntryNoSkip();
-      // Tab is reused (navigated in place) — nothing to close.
+      // Close the current tab then open the previous one (mirrors tagEntry behaviour)
+      setTimeout(async () => {
+        if (closingTabId) {
+          try {
+            await chrome.tabs.remove(closingTabId);
+          } catch (e) {
+            console.log('Tab may have already been closed:', e.message);
+          }
+        }
+        this.processCurrentEntryNoSkip();
+      }, 800);
 
     } catch (error) {
       console.error('❌ Error going to previous entry:', error);
