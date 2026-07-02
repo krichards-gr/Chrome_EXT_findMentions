@@ -1544,28 +1544,25 @@ class CSVReviewer {
   }
 
   async preloadNextPages() {
-    const maxPreload = 1; // Preload 1 page ahead (total: 1 active + 1 preloaded = 2 tabs)
+    const maxPreload = 3;
     if (this.preloadedTabs.size >= maxPreload) return;
     const currentWindow = await chrome.windows.getCurrent();
 
-    const nextIndex = this.currentIndex + 1;
-    if (nextIndex >= this.csvData.length) return;
+    // Walk ahead through candidates, skipping already-preloaded or duplicate links,
+    // until we have maxPreload tabs in the map or exhaust the list.
+    for (let i = 1; i <= maxPreload * 3 && this.preloadedTabs.size < maxPreload; i++) {
+      const nextIndex = this.currentIndex + i;
+      if (nextIndex >= this.csvData.length) break;
 
-    const nextEntry = this.csvData[nextIndex];
-    const nextLink = nextEntry.link;
+      const nextLink = this.csvData[nextIndex].link;
+      if (!nextLink || this.preloadedTabs.has(nextLink)) continue;
 
-    if (!nextLink || this.preloadedTabs.has(nextLink)) return;
-
-    try {
-      const preloadTab = await chrome.tabs.create({
-        url: nextLink,
-        active: false,
-        windowId: currentWindow.id
-      });
-      this.preloadedTabs.set(nextLink, preloadTab);
-      console.log(`Preloaded next page: ${this.truncateUrl(nextLink)}`);
-    } catch (error) {
-      console.error('Failed to preload next page:', error);
+      try {
+        const preloadTab = await chrome.tabs.create({ url: nextLink, active: false, windowId: currentWindow.id });
+        this.preloadedTabs.set(nextLink, preloadTab);
+      } catch (error) {
+        console.error('Failed to preload page:', error);
+      }
     }
   }
 
@@ -2113,11 +2110,20 @@ Are you sure you want to continue?`);
         ORDER BY p.company, p.outlet
         LIMIT 500
       `;
-      const validatedCount = await this.bqRunQuery(`SELECT COUNT(*) AS cnt FROM \`${projectId}.${datasetId}.validated_results\``);
-      this.log(`validated_results has ${validatedCount[0]?.cnt || 0} row(s)`);
-
-      const rawRows = await this.bqRunQuery(sql);
-      this.log(`LEFT JOIN query returned ${rawRows.length} unreviewed row(s)`);
+      const countSql = `
+        SELECT COUNT(*) AS cnt
+        FROM \`${projectId}.${datasetId}.processed_serp_results\` p
+        LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
+          ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+         AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
+        WHERE v.link IS NULL
+      `;
+      const [[countRow], rawRows] = await Promise.all([
+        this.bqRunQuery(countSql),
+        this.bqRunQuery(sql)
+      ]);
+      const totalRemaining = parseInt(countRow?.cnt || '0', 10);
+      this.log(`LEFT JOIN query returned ${rawRows.length} unreviewed row(s) of ${totalRemaining} total`);
       if (rawRows.length === 0) {
         this.showStatus('bqStatus', '✅ No unreviewed records found', 'success');
         return;
@@ -2148,8 +2154,10 @@ Are you sure you want to continue?`);
       // Ensure all rows have the KEEP/DELETE field
       this.csvData.forEach(row => { row['KEEP/DELETE'] = row['KEEP/DELETE'] || ''; });
       await this.saveState();
-      const batchNote = rawRows.length === 500 ? ' (batch of 500 — reload when done for more)' : '';
-      this.showStatus('bqStatus', `✅ Loaded ${this.csvData.length} unreviewed records${batchNote}`, 'success');
+      const isBatch = rawRows.length === 500;
+      const totalNote = isBatch ? ` of ${totalRemaining.toLocaleString()} total` : '';
+      const batchNote = isBatch ? ' — reload when done for more' : '';
+      this.showStatus('bqStatus', `✅ Loaded ${this.csvData.length.toLocaleString()}${totalNote} unreviewed records${batchNote}`, 'success');
       document.getElementById('startProcessing').disabled = false;
       document.getElementById('downloadCsv').disabled = false;
       this.updateProgressInfo();
