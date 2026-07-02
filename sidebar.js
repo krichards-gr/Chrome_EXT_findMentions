@@ -2244,7 +2244,7 @@ Are you sure you want to continue?`);
           ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
          AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
         WHERE v.link IS NULL
-        ORDER BY p.company
+        ORDER BY p.company, p.outlet
       `;
       const validatedCount = await this.bqRunQuery(`SELECT COUNT(*) AS cnt FROM \`${projectId}.${datasetId}.validated_results\``);
       this.log(`validated_results has ${validatedCount[0]?.cnt || 0} row(s)`);
