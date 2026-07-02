@@ -2,12 +2,13 @@ class CSVReviewer {
   constructor() {
     this.csvData = [];
     this.topicData = [];
-    this.variationsData = [];
     this.topicHierarchy = {};
     this.variationsMap = {};
     this.exclusionsMap = {};
     this.logFileHandle = null;
     this._logQueue = Promise.resolve();
+    this._logLineCount = 0;
+    this._saveTimer = null;
 
     // Route console.error through this.log() so catch-block errors land in the persistent log
     const _origError = console.error.bind(console);
@@ -16,6 +17,13 @@ class CSVReviewer {
       const msg = args.map(a => (a instanceof Error) ? `${a.message}\n${a.stack}` : String(a)).join(' ');
       this.log(`ERROR: ${msg}`);
     };
+    // Catch unhandled promise rejections — these bypass console.error and can silently crash the page
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason;
+      const msg = (reason instanceof Error) ? `${reason.message}\n${reason.stack}` : String(reason);
+      this.log(`UNHANDLED REJECTION: ${msg}`);
+      _origError('Unhandled rejection:', reason);
+    });
     this.currentIndex = 0;
     this.currentSentiment = '';
     this.preloadedTabs = new Map();
@@ -286,8 +294,6 @@ class CSVReviewer {
         subtopic: row.Sub || row['Sub-topic'] || row.Subtopic || row.subtopic || row.sub || row['sub-topic'] || row['sub_topic'] || ''
       }));
 
-      console.log('Loaded topic data:', this.topicData); // Debug log
-
       // Build topic hierarchy
       this.buildTopicHierarchy();
       await this.saveState();
@@ -413,9 +419,6 @@ class CSVReviewer {
 
     const pattern = `\\b(?:${cleanedTerms.join('|')})${negativeLookahead}\\b`;
 
-    console.log(`🔍 Generated regex pattern for ${company}: ${pattern}`);
-    console.log(`🔍 Searching for variations: ${allTerms.join(', ')}`);
-    if (negativeLookahead) console.log(`🔍 Exclusion lookahead: ${negativeLookahead}`);
 
     return {
       pattern: pattern,
@@ -430,22 +433,20 @@ class CSVReviewer {
     this.topicHierarchy = {};
 
     this.topicData.forEach(item => {
-      // Handle both 'Sub-topic' and 'Sub' column names
       const topic = item.topic.trim();
       const subtopic = (item.subtopic || item.Sub || '').trim();
 
       if (topic) {
         topics.add(topic);
         if (!this.topicHierarchy[topic]) {
-          this.topicHierarchy[topic] = new Set();
+          this.topicHierarchy[topic] = [];
         }
-        if (subtopic) {
-          this.topicHierarchy[topic].add(subtopic);
+        if (subtopic && !this.topicHierarchy[topic].includes(subtopic)) {
+          this.topicHierarchy[topic].push(subtopic);
         }
       }
     });
 
-    // Populate topic dropdown
     const topicSelect = document.getElementById('topicSelect');
     topicSelect.innerHTML = '<option value="">Select Topic...</option>';
 
@@ -455,8 +456,6 @@ class CSVReviewer {
       option.textContent = topic;
       topicSelect.appendChild(option);
     });
-
-    console.log('Topic hierarchy built:', this.topicHierarchy); // Debug log
   }
 
   getUniqueCompanies() {
@@ -520,24 +519,20 @@ class CSVReviewer {
     const selectedTopic = document.getElementById('topicSelect').value;
     const subtopicSelect = document.getElementById('subtopicSelect');
 
-    console.log('Selected topic:', selectedTopic); // Debug log
-    console.log('Available topics in hierarchy:', Object.keys(this.topicHierarchy || {})); // Debug log
-
     subtopicSelect.innerHTML = '<option value="">Select Sub-topic...</option>';
 
-    if (selectedTopic && this.topicHierarchy && this.topicHierarchy[selectedTopic]) {
-      const subtopics = Array.from(this.topicHierarchy[selectedTopic]).sort();
-      console.log('Subtopics for', selectedTopic, ':', subtopics); // Debug log
+    const subtopics = (selectedTopic && this.topicHierarchy && this.topicHierarchy[selectedTopic])
+      ? this.topicHierarchy[selectedTopic].slice().sort()
+      : [];
 
-      subtopics.forEach(subtopic => {
-        if (subtopic) { // Only add non-empty subtopics
-          const option = document.createElement('option');
-          option.value = subtopic;
-          option.textContent = subtopic;
-          subtopicSelect.appendChild(option);
-        }
-      });
-    }
+    subtopics.forEach(subtopic => {
+      if (subtopic) {
+        const option = document.createElement('option');
+        option.value = subtopic;
+        option.textContent = subtopic;
+        subtopicSelect.appendChild(option);
+      }
+    });
 
     this.saveTopicSelection();
   }
@@ -545,14 +540,9 @@ class CSVReviewer {
   saveDateSelection() {
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
       const date = document.getElementById('dateInput').value;
-
       this.csvData[this.currentIndex][this.cols.date] = date;
-      this.saveState();
-
-      // Immediately update the display
+      this._scheduleSave();
       this.updateCurrentEntryDisplay();
-
-      console.log(`📅 Date saved: ${date} for entry ${this.currentIndex + 1}`);
     }
   }
 
@@ -560,12 +550,8 @@ class CSVReviewer {
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
       document.getElementById('dateInput').value = '';
       this.csvData[this.currentIndex][this.cols.date] = '';
-      this.saveState();
-
-      // Immediately update the display
+      this._scheduleSave();
       this.updateCurrentEntryDisplay();
-
-      console.log(`📅 Date cleared for entry ${this.currentIndex + 1}`);
     }
   }
 
@@ -590,15 +576,11 @@ class CSVReviewer {
   saveTopicSelection() {
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
       const topic = document.getElementById('topicSelect').value;
-      // The edit field is the source of truth — it starts populated from the dropdown
-      // but the user can customize placeholders (e.g. [Treatment/Product] -> Stelara).
       const subtopic = document.getElementById('subtopicEdit').value;
 
       this.csvData[this.currentIndex][this.cols.topic] = topic;
       this.csvData[this.currentIndex][this.cols.subtopic] = subtopic;
-      this.saveState();
-
-      // Immediately update the display
+      this._scheduleSave();
       this.updateCurrentEntryDisplay();
     }
   }
@@ -606,19 +588,12 @@ class CSVReviewer {
   setSentiment(sentiment) {
     this.currentSentiment = sentiment;
 
-    // Update visual feedback immediately
-    document.querySelectorAll('.sentiment-btn').forEach(btn => {
-      btn.classList.remove('selected');
-    });
-
+    document.querySelectorAll('.sentiment-btn').forEach(btn => btn.classList.remove('selected'));
     document.getElementById('sentiment' + sentiment).classList.add('selected');
 
-    // Save to current entry and update display immediately
     if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
       this.csvData[this.currentIndex][this.cols.sentiment] = sentiment;
-      this.saveState();
-
-      // Immediately update the display
+      this._scheduleSave();
       this.updateCurrentEntryDisplay();
     }
   }
@@ -814,11 +789,11 @@ class CSVReviewer {
     );
   }
 
-  async processCurrentEntry() {
-    // Skip over records that already have a KEEP/DELETE decision
-    while (this.currentIndex < this.csvData.length && this.hasKeepDeleteLabel(this.csvData[this.currentIndex])) {
-      console.log(`Skipping already-decided entry at index ${this.currentIndex}`);
-      this.currentIndex++;
+  async processCurrentEntry({ skipDecided = true } = {}) {
+    if (skipDecided) {
+      while (this.currentIndex < this.csvData.length && this.hasKeepDeleteLabel(this.csvData[this.currentIndex])) {
+        this.currentIndex++;
+      }
     }
 
     if (this.currentIndex >= this.csvData.length) {
@@ -889,46 +864,42 @@ class CSVReviewer {
       } else {
         // No preloaded tab — navigate the active tab or create one if none exists
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (activeTab) {
-          tab = activeTab;
-          await chrome.tabs.update(tab.id, { url: link });
-        } else {
-          tab = await chrome.tabs.create({ url: link });
-        }
-        this.currentTabId = tab.id;
 
-        // Wait for page to load, then inject content script
+        // Shared injection logic called from both the load handler and the race-condition guard
+        const doInjectAndShow = () => {
+          this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
+          setTimeout(async () => {
+            try {
+              await this.ensureContentScript(tab.id);
+              if (hasCorporation) {
+                const searchTerms = this.getSearchTermsForCompany(corporation);
+                await this.searchAndHighlightMultiple(tab.id, searchTerms);
+              } else {
+                await this.scanAndPreselectCompanies(tab.id);
+                this.autoDetectDate(tab.id);
+              }
+              this.showReviewSection();
+              this.preloadNextPages();
+            } catch (error) {
+              console.error('Error in searchAndHighlight:', error);
+              this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
+              this.updateLoadingIndicator('ready', 'Review manually');
+              this.showReviewSection();
+            }
+          }, 1000);
+        };
+
+        // targetTabId starts null so the listener ignores all events until we know the tab ID.
+        // This lets us register the listener BEFORE navigating, preventing the race where
+        // a fast-loading page fires 'complete' before the listener is added.
         let loadHandlerFired = false;
-        const loadHandler = async (tabId, changeInfo) => {
-          if (tabId === tab.id && changeInfo.status === 'complete') {
+        let targetTabId = null;
+        const loadHandler = (tabId, changeInfo) => {
+          if (targetTabId !== null && tabId === targetTabId && changeInfo.status === 'complete') {
             loadHandlerFired = true;
             clearTimeout(loadTimeoutId);
             chrome.tabs.onUpdated.removeListener(loadHandler);
-
-            this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
-
-            // Small delay to ensure page is fully loaded
-            setTimeout(async () => {
-              try {
-                await this.ensureContentScript(tab.id);
-                if (hasCorporation) {
-                  const searchTerms = this.getSearchTermsForCompany(corporation);
-                  await this.searchAndHighlightMultiple(tab.id, searchTerms);
-                } else {
-                  await this.scanAndPreselectCompanies(tab.id);
-                  this.autoDetectDate(tab.id);
-                }
-                this.showReviewSection();
-
-                // Start preloading next pages
-                this.preloadNextPages();
-              } catch (error) {
-                console.error('Error in searchAndHighlight:', error);
-                this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
-                this.updateLoadingIndicator('ready', 'Review manually');
-                this.showReviewSection(); // must unlock isProcessing
-              }
-            }, 1000); // Reduced from 1500ms
+            doInjectAndShow();
           }
         };
 
@@ -938,11 +909,32 @@ class CSVReviewer {
             chrome.tabs.onUpdated.removeListener(loadHandler);
             this.showStatus('processingStatus', '⚠️ Page load timed out — you can review manually or skip', 'warning');
             this.updateLoadingIndicator('ready', 'Timed out');
-            this.showReviewSection(); // unlock UI
+            this.showReviewSection();
           }
-        }, 30000);
+        }, 90000);
 
+        // Register listener BEFORE navigating to avoid missing 'complete' on fast pages
         chrome.tabs.onUpdated.addListener(loadHandler);
+
+        if (activeTab) {
+          tab = activeTab;
+          targetTabId = tab.id; // set synchronously before update can fire any events
+          // If the active tab is restricted (chrome://, edge://, etc.) update will reject;
+          // fall back to creating a new tab so targetTabId stays valid.
+          chrome.tabs.update(tab.id, { url: link }).catch(async (e) => {
+            console.warn('Could not navigate existing tab, opening new tab:', e.message);
+            chrome.tabs.onUpdated.removeListener(loadHandler);
+            tab = await chrome.tabs.create({ url: link });
+            targetTabId = tab.id;
+            this.currentTabId = tab.id;
+            chrome.tabs.onUpdated.addListener(loadHandler);
+          });
+        } else {
+          tab = await chrome.tabs.create({ url: link });
+          targetTabId = tab.id;
+        }
+        this.currentTabId = tab.id;
+
         this.showStatus('processingStatus', `🔄 Loading: ${this.truncateUrl(link)}`, 'info');
         this.updateLoadingIndicator('loading', 'Loading page...');
       }
@@ -1030,21 +1022,10 @@ class CSVReviewer {
     }
   }
 
-  // ========== SEARCH EXECUTION LOGIC - MAIN SEARCH ISSUE AREA ==========
   async searchAndHighlightMultiple(tabId, searchTerms) {
     try {
-      let totalMatches = 0;
-      let bestResult = null;
-
-      // OLD METHOD: Try each search term individually (PROBLEMATIC)
-      // This often misses matches and doesn't find the best terms
-
-      // NEW METHOD: Use regex pattern for comprehensive matching
       const company = this.csvData[this.currentIndex][this.cols.company];
       const regexInfo = this.generateCompanyRegexPattern(company);
-
-      console.log(`🔍 OLD METHOD: Would search for individual terms: ${searchTerms.join(', ')}`);
-      console.log(`🔍 NEW METHOD: Using regex pattern: ${regexInfo.pattern}`);
 
       try {
         const results = await chrome.tabs.sendMessage(tabId, {
@@ -1056,25 +1037,22 @@ class CSVReviewer {
 
         if (results) {
           this.updateMatchInfo(results.matchCount, results.currentMatch, regexInfo.terms.join(' | '));
-
-          // NEW: Automatically check for date
           this.autoDetectDate(tabId);
-
           return;
         }
       } catch (error) {
-        console.log(`❌ NEW REGEX METHOD FAILED: ${error.message}`);
-        console.log(`⚠️ FALLING BACK TO OLD METHOD...`);
+        console.log(`Regex search failed, falling back to term search: ${error.message}`);
       }
 
-      // FALLBACK: Old method if regex fails
+      // Fallback: search each term individually
+      let totalMatches = 0;
+      let bestResult = null;
       for (const term of searchTerms) {
         try {
           const results = await chrome.tabs.sendMessage(tabId, {
             action: 'searchAndHighlight',
             searchTerm: term
           });
-
           if (results && results.matchCount > totalMatches) {
             totalMatches = results.matchCount;
             bestResult = results;
@@ -1095,7 +1073,6 @@ class CSVReviewer {
       this.showStatus('processingStatus', '❌ Error searching page', 'warning');
     }
   }
-  // ========== SEARCH EXECUTION LOGIC - END ==========
 
   updateMatchInfo(matchCount, currentMatch, searchTerm = '') {
     const termInfo = searchTerm ? ` (searching for: ${searchTerm})` : '';
@@ -1123,34 +1100,23 @@ class CSVReviewer {
   async autoDetectDate(tabId) {
     const existingDate = this.csvData[this.currentIndex][this.cols.date];
 
-    // If the existing date is within the past two years, keep it and skip detection
     if (existingDate && this.isDateRecent(existingDate)) {
-      console.log(`📅 Existing date ${existingDate} is recent, keeping it`);
       return;
     }
 
     try {
-      console.log('📅 Requesting date scan...');
-      const result = await chrome.tabs.sendMessage(tabId, {
-        action: 'scanForDate'
-      });
+      const result = await chrome.tabs.sendMessage(tabId, { action: 'scanForDate' });
 
       let finalDate = '';
-
       if (result && result.date && this.isDateRecent(result.date)) {
-        // Page has a recent date — use it
         finalDate = result.date;
-        console.log(`📅 Using page-detected date: ${finalDate} (source: ${result.source})`);
       } else if (existingDate) {
-        // Keep the existing date (e.g. from the collector pipeline) — never discard data
         finalDate = existingDate;
-        console.log(`📅 Keeping existing date ${existingDate} — no better date found on page`);
       }
 
-      // Update the date field (may be setting or clearing)
       document.getElementById('dateInput').value = finalDate;
       this.csvData[this.currentIndex][this.cols.date] = finalDate;
-      this.saveState();
+      this._scheduleSave();
 
       if (finalDate) {
         const dateInput = document.getElementById('dateInput');
@@ -1237,11 +1203,8 @@ class CSVReviewer {
   }
 
   async goToPreviousEntry() {
-    console.log(`🔙 goToPreviousEntry called. Current index: ${this.currentIndex}`);
-
     if (this.isProcessing) return;
     if (this.currentIndex <= 0) {
-      console.log(`⚠️ Cannot go back - already at first entry`);
       this.showStatus('processingStatus', '⚠️ Already at first entry', 'warning');
       return;
     }
@@ -1250,18 +1213,11 @@ class CSVReviewer {
       this.isProcessing = true;
       this.setProcessingState(true);
 
-      console.log(`🔙 Going from entry ${this.currentIndex + 1} to entry ${this.currentIndex}`);
-
-      // Capture and clear the working tab ID before moving on (same pattern as tagEntry)
       const closingTabId = this.currentTabId;
       this.currentTabId = null;
 
-      // Clean up any preloaded tabs
       this.cleanupUnusedPreloadedTabs();
-
-      // Move to previous entry
       this.currentIndex--;
-      console.log(`🔙 New index: ${this.currentIndex}`);
 
       this.showStatus('processingStatus', `⏪ Going back to entry ${this.currentIndex + 1}`, 'info');
 
@@ -1274,7 +1230,7 @@ class CSVReviewer {
             console.log('Tab may have already been closed:', e.message);
           }
         }
-        this.processCurrentEntryNoSkip();
+        await this.processCurrentEntryNoSkip();
       }, 800);
 
     } catch (error) {
@@ -1286,11 +1242,8 @@ class CSVReviewer {
   }
 
   async goToNextEntry() {
-    console.log(`🔜 goToNextEntry called. Current index: ${this.currentIndex}`);
-
     if (this.isProcessing) return;
     if (this.currentIndex >= this.csvData.length - 1) {
-      console.log(`⚠️ Cannot go forward - already at last entry`);
       this.showStatus('processingStatus', '⚠️ Already at last entry', 'warning');
       return;
     }
@@ -1299,16 +1252,10 @@ class CSVReviewer {
       this.isProcessing = true;
       this.setProcessingState(true);
 
-      console.log(`🔜 Going from entry ${this.currentIndex + 1} to entry ${this.currentIndex + 2}`);
-
-      // Capture and clear the working tab ID before moving on (same pattern as tagEntry)
       const closingTabId = this.currentTabId;
       this.currentTabId = null;
 
-      // Clean up any preloaded tabs for entries we've already passed
       this.cleanupUnusedPreloadedTabs();
-
-      // Move to next entry (no skipping — user explicitly wants to navigate)
       this.currentIndex++;
 
       this.showStatus('processingStatus', `⏩ Going to entry ${this.currentIndex + 1}`, 'info');
@@ -1322,7 +1269,7 @@ class CSVReviewer {
             console.log('Tab may have already been closed:', e.message);
           }
         }
-        this.processCurrentEntryNoSkip();
+        await this.processCurrentEntryNoSkip();
       }, 800);
 
     } catch (error) {
@@ -1335,127 +1282,7 @@ class CSVReviewer {
 
   // Like processCurrentEntry but does NOT skip fully-filled entries
   async processCurrentEntryNoSkip() {
-    if (this.currentIndex >= this.csvData.length) {
-      this.showStatus('processingStatus', '🎉 All entries processed!', 'success');
-      this.updateStepIndicators();
-      this.isProcessing = false;
-      this.setProcessingState(false);
-      return;
-    }
-
-    const entry = this.csvData[this.currentIndex];
-    const link = entry.link;
-    const corporation = entry[this.cols.company];
-
-    if (!link) {
-      this.showStatus('processingStatus', '⚠️ Invalid entry - missing link', 'warning');
-      this.isProcessing = false;
-      this.setProcessingState(false);
-      return;
-    }
-
-    const hasCorporation = !!(corporation && corporation.trim());
-
-    try {
-      const preloadedTab = this.preloadedTabs.get(link);
-      let tab;
-
-      if (preloadedTab) {
-        tab = preloadedTab;
-        try {
-          await chrome.tabs.update(tab.id, { active: true });
-        } catch (e) {
-          console.log('Preloaded tab was closed, opening new tab:', e.message);
-          tab = await chrome.tabs.create({ url: link });
-        }
-        this.preloadedTabs.delete(link);
-        this.currentTabId = tab.id;
-
-        this.showStatus('processingStatus', `⚡ Using preloaded page: ${this.truncateUrl(link)}`, 'info');
-        this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
-
-        setTimeout(async () => {
-          try {
-            await this.ensureContentScript(tab.id);
-            if (hasCorporation) {
-              const searchTerms = this.getSearchTermsForCompany(corporation);
-              await this.searchAndHighlightMultiple(tab.id, searchTerms);
-            } else {
-              await this.scanAndPreselectCompanies(tab.id);
-              this.autoDetectDate(tab.id);
-            }
-            this.showReviewSection();
-            this.preloadNextPages();
-          } catch (error) {
-            console.error('Error in searchAndHighlight:', error);
-            this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
-            this.updateLoadingIndicator('ready', 'Review manually');
-            this.showReviewSection();
-          }
-        }, 300);
-
-      } else {
-        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (activeTab) {
-          tab = activeTab;
-          await chrome.tabs.update(tab.id, { url: link });
-        } else {
-          tab = await chrome.tabs.create({ url: link });
-        }
-        this.currentTabId = tab.id;
-
-        let loadHandlerFiredNoSkip = false;
-        const loadHandler = async (tabId, changeInfo) => {
-          if (tabId === tab.id && changeInfo.status === 'complete') {
-            loadHandlerFiredNoSkip = true;
-            clearTimeout(loadTimeoutIdNoSkip);
-            chrome.tabs.onUpdated.removeListener(loadHandler);
-
-            this.updateLoadingIndicator('loading', hasCorporation ? 'Searching...' : 'Scanning for companies...');
-
-            setTimeout(async () => {
-              try {
-                await this.ensureContentScript(tab.id);
-                if (hasCorporation) {
-                  const searchTerms = this.getSearchTermsForCompany(corporation);
-                  await this.searchAndHighlightMultiple(tab.id, searchTerms);
-                } else {
-                  await this.scanAndPreselectCompanies(tab.id);
-                  this.autoDetectDate(tab.id);
-                }
-                this.showReviewSection();
-                this.preloadNextPages();
-              } catch (error) {
-                console.error('Error in searchAndHighlight:', error);
-                this.showStatus('processingStatus', `⚠️ Page scan failed (${error.message || 'unknown error'}) — review manually`, 'warning');
-                this.updateLoadingIndicator('ready', 'Review manually');
-                this.showReviewSection(); // must unlock isProcessing
-              }
-            }, 1000);
-          }
-        };
-
-        const loadTimeoutIdNoSkip = setTimeout(() => {
-          if (!loadHandlerFiredNoSkip) {
-            chrome.tabs.onUpdated.removeListener(loadHandler);
-            this.showStatus('processingStatus', '⚠️ Page load timed out — you can review manually or skip', 'warning');
-            this.updateLoadingIndicator('ready', 'Timed out');
-            this.showReviewSection(); // unlock UI
-          }
-        }, 30000);
-
-        chrome.tabs.onUpdated.addListener(loadHandler);
-        this.showStatus('processingStatus', `🔄 Loading: ${this.truncateUrl(link)}`, 'info');
-        this.updateLoadingIndicator('loading', 'Loading page...');
-      }
-
-      this.updateProgressInfo();
-
-    } catch (error) {
-      this.showStatus('processingStatus', `❌ Error: ${error.message}`, 'warning');
-      this.isProcessing = false;
-      this.setProcessingState(false);
-    }
+    return this.processCurrentEntry({ skipDecided: false });
   }
 
   updateStepIndicators() {
@@ -1486,16 +1313,13 @@ class CSVReviewer {
   }
 
   async navigateMatch(direction) {
-    if (this.isProcessing) return;
-
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (this.isProcessing || !this.currentTabId) return;
 
     try {
-      const results = await chrome.tabs.sendMessage(tab.id, {
+      const results = await chrome.tabs.sendMessage(this.currentTabId, {
         action: 'navigateMatch',
-        direction: direction
+        direction
       });
-
       if (results) {
         this.updateMatchInfo(results.matchCount, results.currentMatch);
       }
@@ -1835,7 +1659,7 @@ class CSVReviewer {
 
           // Process next entry
           // This will eventually call showReviewSection which unlocks the UI
-          this.processCurrentEntry();
+          await this.processCurrentEntry();
         }, 800);
       } else {
         this.showStatus('processingStatus', '🎉 All entries completed!', 'success');
@@ -1940,7 +1764,6 @@ Are you sure you want to continue?`);
       // Reset all instance variables
       this.csvData = [];
       this.topicData = [];
-      this.variationsData = [];
       this.topicHierarchy = {};
       this.variationsMap = {};
       this.currentIndex = 0;
@@ -2035,8 +1858,18 @@ Are you sure you want to continue?`);
 
   async saveState() {
     try {
+      // In BQ mode the queue is always re-fetched from BigQuery on load, so there is no
+      // reason to persist csvData (which can be thousands of rows and blow the storage quota).
+      // In CSV mode, strip scraped article text (large, re-scrape-able) before saving.
+      let csvDataToSave = null;
+      if (!this.bqMode) {
+        const contentCol = this.cols && this.cols.content;
+        csvDataToSave = contentCol
+          ? this.csvData.map(row => { const r = { ...row }; delete r[contentCol]; return r; })
+          : this.csvData;
+      }
       await chrome.storage.local.set({
-        csvData: this.csvData,
+        csvData: csvDataToSave,
         topicData: this.topicData,
         topicHierarchy: this.topicHierarchy,
         variationsMap: this.variationsMap,
@@ -2118,6 +1951,8 @@ Are you sure you want to continue?`);
     } catch (error) {
       console.error('Error loading state:', error);
     }
+    // Restore log file handle from IndexedDB (non-blocking — runs after state renders)
+    this.initLogFile();
   }
 
   // ─── BigQuery mode ───────────────────────────────────────────────────────
@@ -2230,25 +2065,6 @@ Are you sure you want to continue?`);
     return rows;
   }
 
-  async bqStreamInsert(table, rows) {
-    const { projectId, datasetId } = this.bqConfig;
-    const endpoint = `projects/${projectId}/datasets/${datasetId}/tables/${table}/insertAll`;
-    this.log(`BQ insert → ${table} (${rows.length} row(s))`);
-    const body = {
-      skipInvalidRows: false,
-      ignoreUnknownValues: true,
-      rows: rows.map((r, i) => ({ insertId: `row-${Date.now()}-${i}`, json: r }))
-    };
-    const result = await this.bqRequest(endpoint, 'POST', body);
-    if (result.insertErrors && result.insertErrors.length > 0) {
-      const msgs = result.insertErrors.map(e => e.errors.map(x => x.message).join('; ')).join(' | ');
-      this.log(`BQ insert errors: ${msgs}`);
-      throw new Error(`BQ insert errors: ${msgs}`);
-    }
-    this.log(`BQ insert succeeded`);
-    return result;
-  }
-
   async bqEnsureValidatedTable() {
     const { projectId, datasetId } = this.bqConfig;
     // Check if table already exists with the correct schema
@@ -2295,6 +2111,7 @@ Are you sure you want to continue?`);
          AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
         WHERE v.link IS NULL
         ORDER BY p.company, p.outlet
+        LIMIT 500
       `;
       const validatedCount = await this.bqRunQuery(`SELECT COUNT(*) AS cnt FROM \`${projectId}.${datasetId}.validated_results\``);
       this.log(`validated_results has ${validatedCount[0]?.cnt || 0} row(s)`);
@@ -2331,7 +2148,8 @@ Are you sure you want to continue?`);
       // Ensure all rows have the KEEP/DELETE field
       this.csvData.forEach(row => { row['KEEP/DELETE'] = row['KEEP/DELETE'] || ''; });
       await this.saveState();
-      this.showStatus('bqStatus', `✅ Loaded ${this.csvData.length} unreviewed records`, 'success');
+      const batchNote = rawRows.length === 500 ? ' (batch of 500 — reload when done for more)' : '';
+      this.showStatus('bqStatus', `✅ Loaded ${this.csvData.length} unreviewed records${batchNote}`, 'success');
       document.getElementById('startProcessing').disabled = false;
       document.getElementById('downloadCsv').disabled = false;
       this.updateProgressInfo();
@@ -2370,6 +2188,75 @@ Are you sure you want to continue?`);
     }
   }
 
+  // ── IndexedDB helpers for persisting the file handle across sessions ──────
+  _openLogDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('ext_log_db', 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async saveLogHandleToDB(handle) {
+    const db = await this._openLogDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(handle, 'logFile');
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  }
+
+  async loadLogHandleFromDB() {
+    const db = await this._openLogDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('handles', 'readonly');
+      const req = tx.objectStore('handles').get('logFile');
+      req.onsuccess = () => { db.close(); resolve(req.result || null); };
+      req.onerror = () => { db.close(); reject(req.error); };
+    });
+  }
+
+  // Called on startup — restores the handle without showing a file picker.
+  // In an extension context Chrome often auto-grants readwrite permission, so
+  // this is typically zero-interaction. If not, a "Reconnect" button appears.
+  async initLogFile() {
+    try {
+      const handle = await this.loadLogHandleFromDB();
+      if (!handle) return;
+
+      const activate = (h) => {
+        this.logFileHandle = h;
+        const el = document.getElementById('logFileStatus');
+        if (el) el.textContent = `✅ ${h.name}`;
+        this.log(`=== Log session resumed — writing to ${h.name} ===`);
+      };
+
+      // Check existing permission first (no user gesture needed)
+      const state = await handle.queryPermission({ mode: 'readwrite' });
+      if (state === 'granted') { activate(handle); return; }
+
+      // Try to re-request (works without gesture in some extension contexts)
+      try {
+        const state2 = await handle.requestPermission({ mode: 'readwrite' });
+        if (state2 === 'granted') { activate(handle); return; }
+      } catch (_) { /* requires user gesture — fall through to reconnect button */ }
+
+      // Show a lightweight reconnect button (no file picker, just permission prompt)
+      const el = document.getElementById('logFileStatus');
+      if (el) {
+        el.innerHTML = `<button id="reconnectLog" style="font-size:11px;padding:2px 6px;background:#2d3748;color:#fbd38d;border:none;border-radius:4px;cursor:pointer;">🔄 Reconnect ${handle.name}</button>`;
+        document.getElementById('reconnectLog')?.addEventListener('click', async () => {
+          const s = await handle.requestPermission({ mode: 'readwrite' });
+          if (s === 'granted') activate(handle);
+        });
+      }
+    } catch (e) {
+      console.warn('Could not restore log file handle:', e.message);
+    }
+  }
+
   async selectLogFile() {
     try {
       const handle = await window.showSaveFilePicker({
@@ -2378,6 +2265,7 @@ Are you sure you want to continue?`);
         excludeAcceptAllOption: false,
       });
       this.logFileHandle = handle;
+      await this.saveLogHandleToDB(handle); // persist for next session
       const statusEl = document.getElementById('logFileStatus');
       if (statusEl) statusEl.textContent = `✅ ${handle.name}`;
       this.log(`=== Log session started — writing to ${handle.name} ===`);
@@ -2412,10 +2300,21 @@ Are you sure you want to continue?`);
     const panel = document.getElementById('debugLog');
     if (panel) {
       panel.textContent += `${line}\n`;
+      this._logLineCount++;
+      if (this._logLineCount > 500) {
+        const lines = panel.textContent.split('\n');
+        panel.textContent = lines.slice(-400).join('\n');
+        this._logLineCount = 400;
+      }
       panel.scrollTop = panel.scrollHeight;
     }
     console.log(line);
     this.appendToLogFile(line);
+  }
+
+  _scheduleSave() {
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this.saveState(), 1000);
   }
 
   showStatus(elementId, message, type) {
@@ -2435,16 +2334,6 @@ Are you sure you want to continue?`);
   }
 }
 
-// Initialize when sidebar opens
 document.addEventListener('DOMContentLoaded', () => {
   new CSVReviewer();
-});
-
-// Handle sidebar opening/closing
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'sidebarOpened') {
-    // Refresh data when sidebar is opened
-    const reviewer = new CSVReviewer();
-    sendResponse({ success: true });
-  }
 });
