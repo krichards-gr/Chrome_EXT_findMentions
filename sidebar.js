@@ -5,6 +5,7 @@ class CSVReviewer {
     this.variationsData = [];
     this.topicHierarchy = {};
     this.variationsMap = {};
+    this.exclusionsMap = {};
     this.currentIndex = 0;
     this.currentSentiment = '';
     this.preloadedTabs = new Map();
@@ -306,8 +307,11 @@ class CSVReviewer {
         return;
       }
 
-      // Build variations mapping - first column is company name, second is variation
+      // Build variations mapping - first column is company name, second is variation.
+      // Rows whose second column starts with ! are exclusion phrases (e.g. "!lilly foundation")
+      // — matches for that company that are followed by the exclusion suffix are suppressed.
       this.variationsMap = {};
+      this.exclusionsMap = {};
 
       parsedData.forEach(row => {
         const values = Object.values(row);
@@ -316,18 +320,24 @@ class CSVReviewer {
           const variation = values[1].trim();
 
           if (company && variation) {
-            if (!this.variationsMap[company]) {
-              this.variationsMap[company] = [];
+            if (variation.startsWith('!')) {
+              const phrase = variation.slice(1).trim();
+              if (!this.exclusionsMap[company]) this.exclusionsMap[company] = [];
+              this.exclusionsMap[company].push(phrase);
+            } else {
+              if (!this.variationsMap[company]) this.variationsMap[company] = [];
+              this.variationsMap[company].push(variation);
             }
-            this.variationsMap[company].push(variation);
           }
         }
       });
 
       await this.saveState();
 
-      const totalVariations = Object.values(this.variationsMap).reduce((sum, variations) => sum + variations.length, 0);
-      this.showStatus('variationsStatus', `✅ Loaded variations for ${Object.keys(this.variationsMap).length} companies (${totalVariations} total variations)`, 'success');
+      const totalVariations = Object.values(this.variationsMap).reduce((sum, v) => sum + v.length, 0);
+      const totalExclusions = Object.values(this.exclusionsMap).reduce((sum, v) => sum + v.length, 0);
+      const exclusionNote = totalExclusions > 0 ? `, ${totalExclusions} exclusion(s)` : '';
+      this.showStatus('variationsStatus', `✅ Loaded variations for ${Object.keys(this.variationsMap).length} companies (${totalVariations} total variations${exclusionNote})`, 'success');
 
     } catch (error) {
       this.showStatus('variationsStatus', `❌ Error loading variations: ${error.message}`, 'warning');
@@ -354,23 +364,47 @@ class CSVReviewer {
     // Add main company name
     allTerms.push(company);
 
-    // Add variations if available  
+    // Add variations if available
     if (this.variationsMap && this.variationsMap[company]) {
       allTerms.push(...this.variationsMap[company]);
     }
 
     // Clean and prepare terms for regex
-    const cleanedTerms = allTerms.map(term => {
-      // Escape special regex characters
-      return term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    });
+    const cleanedTerms = allTerms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
-    // Create comprehensive pattern with word boundaries
-    // This finds any of the company name variations as complete words or parts of words
-    const pattern = `\\b(?:${cleanedTerms.join('|')})\\b`;
+    // Build negative lookahead from exclusion phrases (e.g. "lilly foundation" → (?!\s+foundation))
+    // For each exclusion phrase, strip any leading term that's already covered by the match,
+    // then use the remainder as the lookahead suffix.
+    const exclusions = (this.exclusionsMap && this.exclusionsMap[company]) || [];
+    let negativeLookahead = '';
+    if (exclusions.length > 0) {
+      const suffixes = new Set();
+      for (const phrase of exclusions) {
+        const phraseLower = phrase.toLowerCase().trim();
+        let suffix = null;
+        for (const term of allTerms) {
+          const termLower = term.toLowerCase().trim();
+          if (phraseLower.startsWith(termLower)) {
+            suffix = phraseLower.slice(termLower.length).trim();
+            break;
+          }
+        }
+        // If no leading term matched, treat the whole phrase as the suffix
+        if (suffix === null) suffix = phraseLower;
+        if (suffix.length > 0) {
+          suffixes.add(suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        }
+      }
+      if (suffixes.size > 0) {
+        negativeLookahead = `(?!\\s+(?:${[...suffixes].join('|')}))`;
+      }
+    }
+
+    const pattern = `\\b(?:${cleanedTerms.join('|')})${negativeLookahead}\\b`;
 
     console.log(`🔍 Generated regex pattern for ${company}: ${pattern}`);
     console.log(`🔍 Searching for variations: ${allTerms.join(', ')}`);
+    if (negativeLookahead) console.log(`🔍 Exclusion lookahead: ${negativeLookahead}`);
 
     return {
       pattern: pattern,
@@ -1995,6 +2029,7 @@ Are you sure you want to continue?`);
         topicData: this.topicData,
         topicHierarchy: this.topicHierarchy,
         variationsMap: this.variationsMap,
+        exclusionsMap: this.exclusionsMap,
         currentIndex: this.currentIndex,
         cols: this.cols,
         bqMode: this.bqMode,
@@ -2014,7 +2049,7 @@ Are you sure you want to continue?`);
   async loadState() {
     try {
       const result = await chrome.storage.local.get([
-        'csvData', 'topicData', 'topicHierarchy', 'variationsMap', 'currentIndex', 'cols',
+        'csvData', 'topicData', 'topicHierarchy', 'variationsMap', 'exclusionsMap', 'currentIndex', 'cols',
         'bqMode', 'bqConfig'
       ]);
 
@@ -2046,6 +2081,10 @@ Are you sure you want to continue?`);
         this.variationsMap = result.variationsMap;
         const totalVariations = Object.values(this.variationsMap).reduce((sum, variations) => sum + variations.length, 0);
         this.showStatus('variationsStatus', `🔄 Restored variations for ${Object.keys(this.variationsMap).length} companies (${totalVariations} total)`, 'info');
+      }
+
+      if (result.exclusionsMap) {
+        this.exclusionsMap = result.exclusionsMap;
       }
 
       if (result.bqConfig) {
