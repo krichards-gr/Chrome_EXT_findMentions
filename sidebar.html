@@ -858,7 +858,11 @@
     <div class="section-content" style="flex-direction: column; align-items: stretch;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
         <h3 style="margin:0; font-size:13px; color:#718096;">🐛 Debug Log</h3>
-        <button id="clearDebugLog" style="font-size:11px; padding:2px 8px; background:#2d3748; color:#a0aec0; border:none; border-radius:4px; cursor:pointer;">Clear</button>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span id="logFileStatus" style="font-size:11px; color:#718096;"></span>
+          <button id="selectLogFile" style="font-size:11px; padding:2px 8px; background:#2d3748; color:#a0aec0; border:none; border-radius:4px; cursor:pointer;" title="Pick a file in your repo — all logs are appended to it in real time, even across crashes">📁 Log to file</button>
+          <button id="clearDebugLog" style="font-size:11px; padding:2px 8px; background:#2d3748; color:#a0aec0; border:none; border-radius:4px; cursor:pointer;">Clear</button>
+        </div>
       </div>
       <div id="debugLog" style="font-family:monospace; font-size:11px; line-height:1.5; max-height:220px; overflow-y:auto; background:#1a202c; color:#68d391; padding:8px; border-radius:4px; white-space:pre-wrap; word-break:break-all;"></div>
     </div>

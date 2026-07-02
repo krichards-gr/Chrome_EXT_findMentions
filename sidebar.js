@@ -6,6 +6,16 @@ class CSVReviewer {
     this.topicHierarchy = {};
     this.variationsMap = {};
     this.exclusionsMap = {};
+    this.logFileHandle = null;
+    this._logQueue = Promise.resolve();
+
+    // Route console.error through this.log() so catch-block errors land in the persistent log
+    const _origError = console.error.bind(console);
+    console.error = (...args) => {
+      _origError(...args);
+      const msg = args.map(a => (a instanceof Error) ? `${a.message}\n${a.stack}` : String(a)).join(' ');
+      this.log(`ERROR: ${msg}`);
+    };
     this.currentIndex = 0;
     this.currentSentiment = '';
     this.preloadedTabs = new Map();
@@ -47,6 +57,7 @@ class CSVReviewer {
     document.getElementById('clearDebugLog').addEventListener('click', () => {
       document.getElementById('debugLog').textContent = '';
     });
+    document.getElementById('selectLogFile').addEventListener('click', () => this.selectLogFile());
 
     // Sentiment buttons
     document.getElementById('sentimentPositive').addEventListener('click', () => this.setSentiment('Positive'));
@@ -2359,14 +2370,52 @@ Are you sure you want to continue?`);
     }
   }
 
+  async selectLogFile() {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'extension-log.txt',
+        types: [{ description: 'Log file', accept: { 'text/plain': ['.txt', '.log'] } }],
+        excludeAcceptAllOption: false,
+      });
+      this.logFileHandle = handle;
+      const statusEl = document.getElementById('logFileStatus');
+      if (statusEl) statusEl.textContent = `✅ ${handle.name}`;
+      this.log(`=== Log session started — writing to ${handle.name} ===`);
+    } catch (e) {
+      if (e.name !== 'AbortError') console.warn('Log file selection failed:', e);
+    }
+  }
+
+  appendToLogFile(line) {
+    if (!this.logFileHandle) return;
+    // Chain writes so concurrent calls never race on file size
+    this._logQueue = this._logQueue.then(async () => {
+      try {
+        const file = await this.logFileHandle.getFile();
+        const writable = await this.logFileHandle.createWritable({ keepExistingData: true });
+        await writable.seek(file.size);
+        await writable.write(line + '\n');
+        await writable.close();
+      } catch (e) {
+        // Don't recurse — just warn in console
+        console.warn('[log file write failed]', e.message);
+        this.logFileHandle = null;
+        const statusEl = document.getElementById('logFileStatus');
+        if (statusEl) statusEl.textContent = '⚠️ write failed — reselect file';
+      }
+    });
+  }
+
   log(message) {
     const ts = new Date().toISOString().substring(11, 23);
+    const line = `[${ts}] ${message}`;
     const panel = document.getElementById('debugLog');
     if (panel) {
-      panel.textContent += `[${ts}] ${message}\n`;
+      panel.textContent += `${line}\n`;
       panel.scrollTop = panel.scrollHeight;
     }
-    console.log(`[${ts}] ${message}`);
+    console.log(line);
+    this.appendToLogFile(line);
   }
 
   showStatus(elementId, message, type) {
