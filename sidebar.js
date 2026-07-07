@@ -2112,6 +2112,7 @@ Are you sure you want to continue?`);
             ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
            AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
           WHERE v.link IS NULL
+            AND (p.date IS NULL OR p.date >= '2026-04-01')
         )
         WHERE rn = 1
         ORDER BY (company IS NULL OR TRIM(company) = '') ASC, company, outlet
@@ -2127,6 +2128,7 @@ Are you sure you want to continue?`);
             ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
            AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
           WHERE v.link IS NULL
+            AND (p.date IS NULL OR p.date >= '2026-04-01')
         )
         WHERE rn = 1
       `;
