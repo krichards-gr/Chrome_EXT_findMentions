@@ -2107,6 +2107,7 @@ Are you sure you want to continue?`);
           ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
          AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
         WHERE v.link IS NULL
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY p.link, p.company ORDER BY p.link) = 1
         ORDER BY (p.company IS NULL OR TRIM(p.company) = '') ASC, p.company, p.outlet
         LIMIT 500
       `;
@@ -2117,6 +2118,7 @@ Are you sure you want to continue?`);
           ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
          AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
         WHERE v.link IS NULL
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY p.link, p.company ORDER BY p.link) = 1
       `;
       const [[countRow], rawRows] = await Promise.all([
         this.bqRunQuery(countSql),
