@@ -2107,7 +2107,7 @@ Are you sure you want to continue?`);
           ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
          AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
         WHERE v.link IS NULL
-        ORDER BY p.company, p.outlet
+        ORDER BY (p.company IS NULL OR TRIM(p.company) = '') ASC, p.company, p.outlet
         LIMIT 500
       `;
       const countSql = `
