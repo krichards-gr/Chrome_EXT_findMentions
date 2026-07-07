@@ -2099,26 +2099,36 @@ Are you sure you want to continue?`);
     try {
       await this.bqEnsureValidatedTable();
       const { projectId, datasetId } = this.bqConfig;
-      // LOWER+TRIM both sides to handle case/whitespace differences in stored values
+      // LOWER+TRIM both sides to handle case/whitespace differences in stored values.
+      // Outer subquery deduplicates on (company, link): keeps one row per unique pair
+      // while preserving null-company rows independently (null != non-null partition).
       const sql = `
-        SELECT p.*
-        FROM \`${projectId}.${datasetId}.processed_serp_results\` p
-        LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
-          ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
-         AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
-        WHERE v.link IS NULL
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY p.link, p.company ORDER BY p.link) = 1
-        ORDER BY (p.company IS NULL OR TRIM(p.company) = '') ASC, p.company, p.outlet
+        SELECT * EXCEPT(rn)
+        FROM (
+          SELECT p.*,
+            ROW_NUMBER() OVER (PARTITION BY p.link, p.company ORDER BY p.link) AS rn
+          FROM \`${projectId}.${datasetId}.processed_serp_results\` p
+          LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
+            ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+           AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
+          WHERE v.link IS NULL
+        )
+        WHERE rn = 1
+        ORDER BY (company IS NULL OR TRIM(company) = '') ASC, company, outlet
         LIMIT 500
       `;
       const countSql = `
         SELECT COUNT(*) AS cnt
-        FROM \`${projectId}.${datasetId}.processed_serp_results\` p
-        LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
-          ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
-         AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
-        WHERE v.link IS NULL
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY p.link, p.company ORDER BY p.link) = 1
+        FROM (
+          SELECT p.link, p.company,
+            ROW_NUMBER() OVER (PARTITION BY p.link, p.company ORDER BY p.link) AS rn
+          FROM \`${projectId}.${datasetId}.processed_serp_results\` p
+          LEFT JOIN \`${projectId}.${datasetId}.validated_results\` v
+            ON LOWER(TRIM(p.link)) = LOWER(TRIM(v.link))
+           AND (p.company IS NULL OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
+          WHERE v.link IS NULL
+        )
+        WHERE rn = 1
       `;
       const [[countRow], rawRows] = await Promise.all([
         this.bqRunQuery(countSql),
