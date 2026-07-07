@@ -508,11 +508,7 @@ class CSVReviewer {
       countEl.style.color = '#276749';
     }
 
-    // Save first selected company for search purposes
-    if (this.csvData.length > 0 && this.currentIndex < this.csvData.length) {
-      this.csvData[this.currentIndex][this.cols.company] = this.selectedCompanies[0] || '';
-      this.updateCurrentEntryDisplay();
-    }
+    this.updateCurrentEntryDisplay();
   }
 
   updateSubtopics() {
@@ -1391,12 +1387,16 @@ class CSVReviewer {
       const entry = this.csvData[this.currentIndex];
       if (!entry) return; // safety: nothing to display
 
+      // Reset per-entry selection state before deciding whether to show the checklist.
+      // Without this, a company pre-selected for the previous entry bleeds into this one.
+      this.selectedCompanies = [];
+
       const sentiment = entry[this.cols.sentiment];
       const topic = entry[this.cols.topic];
       const subtopic = entry[this.cols.subtopic];
       const date = entry[this.cols.date];
 
-      // Show company selector if company is empty
+      // Show company selector only when the incoming row has no company value.
       const companyControls = document.getElementById('companyControls');
       if (!(entry[this.cols.company] || '').trim()) {
         this.buildCompanyChecklist();
@@ -2142,13 +2142,15 @@ Are you sure you want to continue?`);
         return row;
       });
       this.currentIndex = 0;
-      // Map BQ column names to the extension's internal cols object
+      // Map BQ column names to extension internals — case-insensitive so Company/company/COMPANY all match
       const keys = Object.keys(this.csvData[0]);
-      this.cols.company = keys.find(k => k === 'company') || keys.find(k => k === 'corporation') || 'company';
-      this.cols.sentiment = keys.find(k => k === 'sentiment') || keys.find(k => k === 'Sentiment') || 'sentiment';
-      this.cols.topic = keys.find(k => k === 'topic') || keys.find(k => k === 'Topic') || 'topic';
-      this.cols.subtopic = keys.find(k => k === 'sub_topic') || keys.find(k => k === 'Sub-topic') || keys.find(k => k === 'subtopic') || 'sub_topic';
-      this.cols.date = keys.find(k => k === 'date') || keys.find(k => k === 'Date') || 'date';
+      const findCol = (...names) => keys.find(k => names.includes(k.toLowerCase())) || names[0];
+      this.cols.company   = findCol('company', 'corporation', 'corp');
+      this.cols.sentiment = findCol('sentiment');
+      this.cols.topic     = findCol('topic');
+      this.cols.subtopic  = findCol('sub_topic', 'sub-topic', 'subtopic');
+      this.cols.date      = findCol('date');
+      this.log(`BQ column mapping: company=${this.cols.company} sentiment=${this.cols.sentiment} topic=${this.cols.topic} subtopic=${this.cols.subtopic} date=${this.cols.date}`);
       this.cols.content = keys.find(k => /^(content|full[_ ]?text|article[_ ]?text|body[_ ]?text|text)$/i.test(k)) || null;
       this.cols.keepDelete = 'KEEP/DELETE';
       // Ensure all rows have the KEEP/DELETE field
