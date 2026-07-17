@@ -785,6 +785,7 @@
         <div class="nav-controls">
           <button id="prevMatch" class="nav-btn">← Previous</button>
           <button id="nextMatch" class="nav-btn">Next →</button>
+          <button id="forceDetectBtn" class="secondary-btn" style="padding: 4px 10px; font-size: 12px;" title="Re-run company detection on this page">🔄 Re-detect</button>
           <div class="loading-indicator">
             <span id="loadingDot" class="loading-dot loading"></span>
             <span id="loadingText" class="loading-text">Loading...</span>
@@ -826,11 +827,6 @@
           <input type="date" id="dateInput" />
           <button id="clearDateBtn" class="secondary-btn"
             style="margin-top: 5px; padding: 4px 8px; font-size: 12px;">Clear Date</button>
-        </div>
-
-        <div id="scrapeControls" style="display: none; margin: 15px 0;">
-          <button id="scrapeArticleBtn" class="secondary-btn">📰 Extract Article Text</button>
-          <div id="scrapeStatus"></div>
         </div>
 
         <div class="tag-controls">

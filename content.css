@@ -6,6 +6,13 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 0, 0.3) !important;
   position: relative !important;
   z-index: 1000 !important;
+  cursor: pointer !important;
+}
+
+.csv-reviewer-highlight:hover {
+  background-color: #ffaaaa !important;
+  text-decoration: line-through !important;
+  box-shadow: 0 0 0 1px rgba(255, 0, 0, 0.4) !important;
 }
 
 .csv-reviewer-current-highlight {

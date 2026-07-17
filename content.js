@@ -25,7 +25,7 @@ class PageSearcher {
 
         // NEW: Handle regex-based search
         case 'searchAndHighlightRegex':
-          const regexResults = await this.searchAndHighlightRegex(request.pattern, request.flags, request.originalTerms);
+          const regexResults = await this.searchAndHighlightRegex(request.pattern, request.flags, request.originalTerms, request.companyName || '');
           sendResponse(regexResults);
           break;
 
@@ -363,7 +363,7 @@ class PageSearcher {
   // 2. Finding all variations in a single pass
   // 3. Better handling of word boundaries and punctuation
   // 4. More comprehensive search coverage
-  async searchAndHighlightRegex(pattern, flags, originalTerms) {
+  async searchAndHighlightRegex(pattern, flags, originalTerms, companyName = '') {
     if (!pattern) {
       return { matchCount: 0, currentMatch: 0 };
     }
@@ -387,7 +387,7 @@ class PageSearcher {
       this.currentRegex = regex;
 
       // Search using regex pattern
-      this.searchInElementRegex(document.body, regex);
+      this.searchInElementRegex(document.body, regex, companyName);
 
       // Highlight all matches
       this.highlightMatches();
@@ -468,20 +468,21 @@ class PageSearcher {
       regex.lastIndex = 0;
 
       while ((match = regex.exec(text)) !== null) {
+        let matchedCompany = '';
+        for (let i = 1; i < match.length; i++) {
+          if (match[i] !== undefined) {
+            matchedCompany = patternToCompany[i - 1];
+            foundCompanySet.add(matchedCompany);
+            break;
+          }
+        }
         this.matches.push({
           node: textNode,
           startIndex: match.index,
           endIndex: match.index + match[0].length,
-          matchedText: match[0]
+          matchedText: match[0],
+          company: matchedCompany
         });
-
-        // Figure out which capturing group matched to identify the company
-        for (let i = 1; i < match.length; i++) {
-          if (match[i] !== undefined) {
-            foundCompanySet.add(patternToCompany[i - 1]);
-            break;
-          }
-        }
 
         if (match.index === regex.lastIndex) {
           regex.lastIndex++;
@@ -509,7 +510,7 @@ class PageSearcher {
   }
 
   // ========== OPTIMIZED SEARCH LOGIC (TreeWalker) ==========
-  searchInElementRegex(rootElement, regex) {
+  searchInElementRegex(rootElement, regex, companyName = '') {
     // Use TreeWalker for non-recursive, efficient DOM traversal
     const walker = document.createTreeWalker(
       rootElement,
@@ -543,7 +544,8 @@ class PageSearcher {
           node: node,
           startIndex: match.index,
           endIndex: match.index + match[0].length,
-          matchedText: match[0]
+          matchedText: match[0],
+          company: companyName
         });
 
         // Prevent infinite loop for zero-length matches
@@ -571,39 +573,66 @@ class PageSearcher {
   }
 
   highlightMatch(match, index) {
-    const { node, startIndex, endIndex, matchedText } = match;
+    const { node, startIndex, endIndex, matchedText, company } = match;
     const text = node.textContent;
 
-    // Create text nodes for before, match, and after
     const beforeText = text.substring(0, startIndex);
     const matchText = text.substring(startIndex, endIndex);
     const afterText = text.substring(endIndex);
 
-    // Create highlight span
     const highlightSpan = document.createElement('span');
     highlightSpan.className = this.highlightClass;
     highlightSpan.textContent = matchText;
     highlightSpan.dataset.matchIndex = index;
+    highlightSpan.dataset.company = company || '';
+    highlightSpan.title = `Click to remove this instance (Match ${index + 1}: "${matchedText || matchText}")`;
 
-    // Add debugging info
-    highlightSpan.title = `Match ${index + 1}: "${matchedText || matchText}"`;
+    highlightSpan.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const companyName = highlightSpan.dataset.company;
 
-    // Replace the original text node
+      // Find and remove from matches array
+      const idx = this.matches.findIndex(m => m.element === highlightSpan);
+      if (idx !== -1) {
+        this.matches.splice(idx, 1);
+        if (this.currentMatchIndex >= idx && this.currentMatchIndex > 0) {
+          this.currentMatchIndex--;
+        }
+        this.currentMatchIndex = Math.min(this.currentMatchIndex, Math.max(0, this.matches.length - 1));
+      }
+
+      // Remove from DOM
+      const parent = highlightSpan.parentNode;
+      parent.replaceChild(document.createTextNode(highlightSpan.textContent), highlightSpan);
+      parent.normalize();
+
+      // Re-index remaining spans and restore current highlight class
+      this.matches.forEach((m, i) => {
+        if (m.element) m.element.dataset.matchIndex = i;
+      });
+      this.matches.forEach(m => m.element && m.element.classList.remove(this.currentHighlightClass));
+      if (this.matches.length > 0 && this.matches[this.currentMatchIndex]?.element) {
+        this.matches[this.currentMatchIndex].element.classList.add(this.currentHighlightClass);
+      }
+
+      // Notify sidebar
+      const companiesRemaining = [...new Set(this.matches.map(m => m.company).filter(Boolean))];
+      const companyDropped = companyName && !companiesRemaining.includes(companyName) ? companyName : null;
+      chrome.runtime.sendMessage({
+        action: 'matchInstanceRemoved',
+        remaining: this.matches.length,
+        currentMatch: this.matches.length > 0 ? this.currentMatchIndex + 1 : 0,
+        companyDropped,
+        companiesRemaining
+      });
+    });
+
     const parent = node.parentNode;
-
-    if (beforeText) {
-      parent.insertBefore(document.createTextNode(beforeText), node);
-    }
-
+    if (beforeText) parent.insertBefore(document.createTextNode(beforeText), node);
     parent.insertBefore(highlightSpan, node);
-
-    if (afterText) {
-      parent.insertBefore(document.createTextNode(afterText), node);
-    }
-
+    if (afterText) parent.insertBefore(document.createTextNode(afterText), node);
     parent.removeChild(node);
 
-    // Update the match reference to point to the highlight span
     this.matches[index].element = highlightSpan;
   }
 

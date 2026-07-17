@@ -101,8 +101,17 @@ class CSVReviewer {
     document.getElementById('bqRedirectUri').textContent =
       `https://${chrome.runtime.id}.chromiumapp.org/`;
 
-    // Scrape article button
-    document.getElementById('scrapeArticleBtn').addEventListener('click', () => this.scrapeArticle());
+    // Force re-detect companies
+    document.getElementById('forceDetectBtn').addEventListener('click', () => this.forceCompanyDetection());
+
+    // Handle match instance removals sent from the content script
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === 'matchInstanceRemoved') {
+        this.handleMatchRemoved(message);
+        sendResponse({ ok: true });
+        return false;
+      }
+    });
 
     // Close button
     document.getElementById('closeBtn').addEventListener('click', () => this.cleanExit());
@@ -1028,7 +1037,8 @@ class CSVReviewer {
           action: 'searchAndHighlightRegex',
           pattern: regexInfo.pattern,
           flags: regexInfo.flags,
-          originalTerms: regexInfo.terms
+          originalTerms: regexInfo.terms,
+          companyName: company
         });
 
         if (results) {
@@ -1128,35 +1138,58 @@ class CSVReviewer {
     }
   }
 
-  async scrapeArticle() {
+  async _autoExtractArticle(tabId) {
     try {
-      document.getElementById('scrapeArticleBtn').disabled = true;
-      document.getElementById('scrapeStatus').innerHTML =
-        '<span style="color: #718096; font-size: 12px;">Extracting article text...</span>';
-
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      await this.ensureContentScript(tab.id);
-
-      const result = await chrome.tabs.sendMessage(tab.id, {
-        action: 'extractArticleText'
-      });
-
+      await this.ensureContentScript(tabId);
+      const result = await chrome.tabs.sendMessage(tabId, { action: 'extractArticleText' });
       if (result && result.text && result.text.trim()) {
         this.csvData[this.currentIndex][this.cols.content] = result.text.trim();
-        await this.saveState();
-
-        document.getElementById('scrapeControls').style.display = 'none';
-        this.showStatus('processingStatus', `📰 Extracted ${result.text.trim().length.toLocaleString()} chars of article text`, 'success');
+        this.log(`📰 Auto-extracted ${result.text.trim().length.toLocaleString()} chars on KEEP`);
       } else {
-        document.getElementById('scrapeStatus').innerHTML =
-          '<span style="color: #e53e3e; font-size: 12px;">Could not extract article text from this page</span>';
-        document.getElementById('scrapeArticleBtn').disabled = false;
+        this.log('📰 Auto-extract: no article text found on this page');
       }
     } catch (error) {
-      console.error('Error scraping article:', error);
-      document.getElementById('scrapeStatus').innerHTML =
-        `<span style="color: #e53e3e; font-size: 12px;">Error: ${error.message}</span>`;
-      document.getElementById('scrapeArticleBtn').disabled = false;
+      this.log(`📰 Auto-extract failed (${error.message}) — skipping`);
+    }
+  }
+
+  async forceCompanyDetection() {
+    if (this.isProcessing || !this.currentTabId) return;
+    try {
+      const entry = this.csvData[this.currentIndex];
+      if (!entry) return;
+      await this.ensureContentScript(this.currentTabId);
+      const corporation = (entry[this.cols.company] || '').trim();
+      if (corporation) {
+        const searchTerms = this.getSearchTermsForCompany(corporation);
+        await this.searchAndHighlightMultiple(this.currentTabId, searchTerms);
+      } else {
+        this.detectedCompanies = [];
+        await this.scanAndPreselectCompanies(this.currentTabId);
+        // Re-apply detected companies to the checklist
+        if (this.detectedCompanies && this.detectedCompanies.length > 0) {
+          const checkboxes = document.querySelectorAll('#companyChecklist input[type="checkbox"]');
+          checkboxes.forEach(cb => {
+            cb.checked = this.detectedCompanies.includes(cb.value);
+          });
+          this.updateCompanySelection();
+          this.detectedCompanies = [];
+        }
+      }
+    } catch (error) {
+      console.error('Force detect failed:', error);
+      this.showStatus('processingStatus', `⚠️ Re-detect failed: ${error.message}`, 'warning');
+    }
+  }
+
+  handleMatchRemoved({ remaining, currentMatch, companyDropped }) {
+    this.updateMatchInfo(remaining, currentMatch);
+    if (companyDropped) {
+      document.querySelectorAll('#companyChecklist input[type="checkbox"]').forEach(cb => {
+        if (cb.value === companyDropped) cb.checked = false;
+      });
+      this.updateCompanySelection();
+      this.log(`🖱️ Removed all "${companyDropped}" highlights — unchecked from selection`);
     }
   }
 
@@ -1419,19 +1452,6 @@ class CSVReviewer {
         this.selectedCompanies = [];
       }
 
-      // Show scrape button only when content column exists and is empty
-      const scrapeControls = document.getElementById('scrapeControls');
-      if (this.cols.content) {
-        const hasContent = (entry[this.cols.content] || '').trim();
-        if (scrapeControls) scrapeControls.style.display = hasContent ? 'none' : 'block';
-        const scrapeStatus = document.getElementById('scrapeStatus');
-        if (scrapeStatus) scrapeStatus.innerHTML = '';
-        const scrapeBtn = document.getElementById('scrapeArticleBtn');
-        if (scrapeBtn) scrapeBtn.disabled = false;
-      } else {
-        if (scrapeControls) scrapeControls.style.display = 'none';
-      }
-
       // Update the display
       this.updateCurrentEntryDisplay();
 
@@ -1509,7 +1529,7 @@ class CSVReviewer {
   setProcessingState(isProcessing) {
     const idsToToggle = [
       'keepBtn', 'deleteBtn', 'prevEntryBtn', 'nextEntryBtn',
-      'prevMatch', 'nextMatch', 'startProcessing',
+      'prevMatch', 'nextMatch', 'forceDetectBtn', 'startProcessing',
       'sentimentPositive', 'sentimentNeutral', 'sentimentNegative'
     ];
 
@@ -1589,6 +1609,11 @@ class CSVReviewer {
       if (currentTopic) baseEntry[this.cols.topic] = currentTopic;
       if (currentSubtopic) baseEntry[this.cols.subtopic] = currentSubtopic;
       if (currentDate) baseEntry[this.cols.date] = currentDate;
+
+      // Auto-extract article text on KEEP when content column exists but is empty
+      if (tag === 'KEEP' && this.cols.content && !(baseEntry[this.cols.content] || '').trim() && this.currentTabId) {
+        await this._autoExtractArticle(this.currentTabId);
+      }
 
       // Handle multi-company duplication
       if (this.selectedCompanies.length > 1) {
