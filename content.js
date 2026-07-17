@@ -563,77 +563,86 @@ class PageSearcher {
     console.warn('searchInElement is deprecated. Use searchInElementRegex instead.');
   }
 
-  // ========== HIGHLIGHTING LOGIC - GENERALLY WORKS BUT CHECK IF ISSUES ==========
+  // ========== HIGHLIGHTING LOGIC ==========
   highlightMatches() {
-    // Process matches in reverse order to avoid offset issues
-    for (let i = this.matches.length - 1; i >= 0; i--) {
-      const match = this.matches[i];
-      this.highlightMatch(match, i);
+    // Group consecutive matches that share the same text node. The TreeWalker
+    // visits nodes in document order, so same-node matches are always adjacent.
+    // We process each node in one forward pass to avoid the crash that occurred
+    // when the old reverse-order approach called node.parentNode on a text node
+    // that a previous (later-index) match had already removed from the DOM.
+    const groups = [];
+    for (let i = 0; i < this.matches.length; i++) {
+      const last = groups[groups.length - 1];
+      if (last && last.node === this.matches[i].node) {
+        last.indices.push(i);
+      } else {
+        groups.push({ node: this.matches[i].node, indices: [i] });
+      }
     }
-  }
 
-  highlightMatch(match, index) {
-    const { node, startIndex, endIndex, matchedText, company } = match;
-    const text = node.textContent;
+    for (const { node, indices } of groups) {
+      const text = node.textContent;
+      const parent = node.parentNode;
+      if (!parent) continue;
 
-    const beforeText = text.substring(0, startIndex);
-    const matchText = text.substring(startIndex, endIndex);
-    const afterText = text.substring(endIndex);
+      let cursor = 0;
+      for (const idx of indices) {
+        const { startIndex, endIndex, matchedText, company } = this.matches[idx];
 
-    const highlightSpan = document.createElement('span');
-    highlightSpan.className = this.highlightClass;
-    highlightSpan.textContent = matchText;
-    highlightSpan.dataset.matchIndex = index;
-    highlightSpan.dataset.company = company || '';
-    highlightSpan.title = `Click to remove this instance (Match ${index + 1}: "${matchedText || matchText}")`;
-
-    highlightSpan.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const companyName = highlightSpan.dataset.company;
-
-      // Find and remove from matches array
-      const idx = this.matches.findIndex(m => m.element === highlightSpan);
-      if (idx !== -1) {
-        this.matches.splice(idx, 1);
-        if (this.currentMatchIndex >= idx && this.currentMatchIndex > 0) {
-          this.currentMatchIndex--;
+        if (startIndex > cursor) {
+          parent.insertBefore(document.createTextNode(text.substring(cursor, startIndex)), node);
         }
-        this.currentMatchIndex = Math.min(this.currentMatchIndex, Math.max(0, this.matches.length - 1));
+
+        const matchText = text.substring(startIndex, endIndex);
+        const highlightSpan = document.createElement('span');
+        highlightSpan.className = this.highlightClass;
+        highlightSpan.textContent = matchText;
+        highlightSpan.dataset.matchIndex = idx;
+        highlightSpan.dataset.company = company || '';
+        highlightSpan.title = `Click to remove this instance (Match ${idx + 1}: "${matchedText || matchText}")`;
+
+        highlightSpan.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const companyName = highlightSpan.dataset.company;
+
+          const i = this.matches.findIndex(m => m.element === highlightSpan);
+          if (i !== -1) {
+            this.matches.splice(i, 1);
+            if (this.currentMatchIndex >= i && this.currentMatchIndex > 0) this.currentMatchIndex--;
+            this.currentMatchIndex = Math.min(this.currentMatchIndex, Math.max(0, this.matches.length - 1));
+          }
+
+          const par = highlightSpan.parentNode;
+          par.replaceChild(document.createTextNode(highlightSpan.textContent), highlightSpan);
+          par.normalize();
+
+          this.matches.forEach((m, i) => { if (m.element) m.element.dataset.matchIndex = i; });
+          this.matches.forEach(m => m.element && m.element.classList.remove(this.currentHighlightClass));
+          if (this.matches.length > 0 && this.matches[this.currentMatchIndex]?.element)
+            this.matches[this.currentMatchIndex].element.classList.add(this.currentHighlightClass);
+
+          const companiesRemaining = [...new Set(this.matches.map(m => m.company).filter(Boolean))];
+          const companyDropped = companyName && !companiesRemaining.includes(companyName) ? companyName : null;
+          chrome.runtime.sendMessage({
+            action: 'matchInstanceRemoved',
+            remaining: this.matches.length,
+            currentMatch: this.matches.length > 0 ? this.currentMatchIndex + 1 : 0,
+            companyDropped,
+            companiesRemaining
+          });
+        });
+
+        parent.insertBefore(highlightSpan, node);
+        this.matches[idx].element = highlightSpan;
+        cursor = endIndex;
       }
 
-      // Remove from DOM
-      const parent = highlightSpan.parentNode;
-      parent.replaceChild(document.createTextNode(highlightSpan.textContent), highlightSpan);
-      parent.normalize();
-
-      // Re-index remaining spans and restore current highlight class
-      this.matches.forEach((m, i) => {
-        if (m.element) m.element.dataset.matchIndex = i;
-      });
-      this.matches.forEach(m => m.element && m.element.classList.remove(this.currentHighlightClass));
-      if (this.matches.length > 0 && this.matches[this.currentMatchIndex]?.element) {
-        this.matches[this.currentMatchIndex].element.classList.add(this.currentHighlightClass);
+      if (cursor < text.length) {
+        parent.insertBefore(document.createTextNode(text.substring(cursor)), node);
       }
 
-      // Notify sidebar
-      const companiesRemaining = [...new Set(this.matches.map(m => m.company).filter(Boolean))];
-      const companyDropped = companyName && !companiesRemaining.includes(companyName) ? companyName : null;
-      chrome.runtime.sendMessage({
-        action: 'matchInstanceRemoved',
-        remaining: this.matches.length,
-        currentMatch: this.matches.length > 0 ? this.currentMatchIndex + 1 : 0,
-        companyDropped,
-        companiesRemaining
-      });
-    });
-
-    const parent = node.parentNode;
-    if (beforeText) parent.insertBefore(document.createTextNode(beforeText), node);
-    parent.insertBefore(highlightSpan, node);
-    if (afterText) parent.insertBefore(document.createTextNode(afterText), node);
-    parent.removeChild(node);
-
-    this.matches[index].element = highlightSpan;
+      parent.removeChild(node);
+    }
   }
 
   // ========== NAVIGATION LOGIC - CHECK IF ISSUES WITH MATCH JUMPING ==========
