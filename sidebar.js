@@ -1194,16 +1194,15 @@ class CSVReviewer {
   }
 
   updateProgressInfo() {
-    const processed = this.csvData.filter(row => this.hasKeepDeleteLabel(row)).length;
     const total = this.csvData.length;
+    const processed = this.csvData.filter(row => this.hasKeepDeleteLabel(row)).length;
+    const remaining = total - processed;
     const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
 
     document.getElementById('progressInfo').innerHTML = `
-      📊 Progress: ${processed}/${total} entries processed (${percentage}%)<br>
-      🔍 Current: Entry ${this.currentIndex + 1} of ${total}
+      ⏳ <strong>${remaining}</strong> remaining &nbsp;·&nbsp; ✅ ${processed} reviewed &nbsp;·&nbsp; ${percentage}% complete
     `;
 
-    // Update Previous Entry button state
     this.updatePreviousEntryButton();
   }
 
@@ -1520,7 +1519,7 @@ class CSVReviewer {
       const reviewSection = document.getElementById('reviewSection');
       if (reviewSection) reviewSection.style.display = 'block';
       this.updateStepIndicators();
-      this.updatePreviousEntryButton();
+      this.updateProgressInfo();
     } catch (e) {
       console.error('showReviewSection display error (UI already unlocked):', e);
     }
