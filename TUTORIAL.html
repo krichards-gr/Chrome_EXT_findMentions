@@ -1,0 +1,1993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>findMentions — Developer Tutorial</title>
+<style>
+/* ====== CSS VARIABLES / THEMES ====== */
+:root {
+  --bg: #f8f9fa;
+  --bg2: #ffffff;
+  --bg3: #eef1f5;
+  --border: #d1d9e0;
+  --text: #1a2332;
+  --text2: #4a5568;
+  --accent: #374B5C;
+  --accent2: #98D2C5;
+  --accent3: #7DBBB0;
+  --link: #2b6cb0;
+  --code-bg: #1e2637;
+  --code-text: #e2e8f0;
+  --kw: #c792ea;
+  --str: #c3e88d;
+  --num: #f78c6c;
+  --cmt: #546e7a;
+  --fn: #82aaff;
+  --tag: #f07178;
+  --attr: #ffcb6b;
+  --success: #276749;
+  --success-bg: #f0fff4;
+  --warn: #7b341e;
+  --warn-bg: #fff5f5;
+  --info: #2c5282;
+  --info-bg: #ebf8ff;
+  --sidebar-w: 260px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1520;
+    --bg2: #1a2332;
+    --bg3: #1e2d40;
+    --border: #2d3f55;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --accent: #98D2C5;
+    --accent2: #374B5C;
+    --accent3: #7DBBB0;
+    --link: #63b3ed;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+}
+[data-theme="light"] {
+  --bg: #f8f9fa; --bg2: #ffffff; --bg3: #eef1f5; --border: #d1d9e0;
+  --text: #1a2332; --text2: #4a5568; --accent: #374B5C; --accent2: #98D2C5;
+  --accent3: #7DBBB0; --link: #2b6cb0; --shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+[data-theme="dark"] {
+  --bg: #0f1520; --bg2: #1a2332; --bg3: #1e2d40; --border: #2d3f55;
+  --text: #e2e8f0; --text2: #94a3b8; --accent: #98D2C5; --accent2: #374B5C;
+  --accent3: #7DBBB0; --link: #63b3ed; --shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+/* ====== RESET & BASE ====== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; overflow-x: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  line-height: 1.7;
+  display: flex;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ====== SIDEBAR ====== */
+#sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+#sidebar-header {
+  background: var(--accent);
+  color: #fff;
+  padding: 16px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+#sidebar-header span { flex: 1; }
+#theme-btn {
+  background: rgba(255,255,255,0.2);
+  border: none; border-radius: 4px;
+  color: #fff; cursor: pointer; font-size: 14px;
+  padding: 4px 8px; line-height: 1;
+}
+#theme-btn:hover { background: rgba(255,255,255,0.35); }
+#toc { padding: 8px 0; flex: 1; }
+#toc a {
+  display: block;
+  padding: 5px 16px;
+  font-size: 12.5px;
+  color: var(--text2);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+  line-height: 1.4;
+}
+#toc a:hover { color: var(--text); background: var(--bg3); }
+#toc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; background: var(--bg3); }
+#toc a.toc-h2 { padding-left: 16px; font-weight: 600; font-size: 12px; color: var(--text2); margin-top: 6px; }
+#toc a.toc-h3 { padding-left: 28px; font-size: 12px; }
+
+/* ====== MAIN CONTENT ====== */
+#main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-width: 0;
+  max-width: 900px;
+  padding: 40px 48px 80px;
+  overflow-x: hidden;
+}
+@media (max-width: 900px) {
+  #sidebar { display: none; }
+  #main { margin-left: 0; padding: 24px 20px; }
+}
+
+/* ====== TYPOGRAPHY ====== */
+h1 { font-size: 2rem; font-weight: 800; color: var(--accent); margin-bottom: 8px; line-height: 1.2; }
+h2 { font-size: 1.5rem; font-weight: 700; color: var(--text); margin: 48px 0 16px; padding-top: 8px; border-top: 2px solid var(--accent2); padding-bottom: 8px; }
+h3 { font-size: 1.15rem; font-weight: 700; color: var(--text); margin: 32px 0 12px; }
+h4 { font-size: 1rem; font-weight: 700; color: var(--text2); margin: 20px 0 8px; }
+p { margin-bottom: 14px; }
+a { color: var(--link); }
+strong { font-weight: 700; }
+em { font-style: italic; }
+ul, ol { margin: 12px 0 14px 24px; }
+li { margin-bottom: 6px; line-height: 1.6; }
+code {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.88em;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ====== CODE BLOCKS ====== */
+.code-block {
+  background: var(--code-bg);
+  border-radius: 8px;
+  margin: 16px 0;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.code-label {
+  background: rgba(255,255,255,0.06);
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 6px 14px;
+  font-family: monospace;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  letter-spacing: 0.5px;
+}
+.code-block pre {
+  color: var(--code-text);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  padding: 16px 20px;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0;
+}
+/* Syntax colors */
+.kw { color: var(--kw); }
+.str { color: var(--str); }
+.num { color: var(--num); }
+.cmt { color: var(--cmt); font-style: italic; }
+.fn { color: var(--fn); }
+.tag { color: var(--tag); }
+.attr { color: var(--attr); }
+.re { color: #f78c6c; }
+.hl { background: rgba(255,255,100,0.12); border-radius: 2px; }
+
+/* ====== CALLOUTS ====== */
+.callout {
+  border-left: 4px solid;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px;
+  margin: 20px 0;
+  font-size: 0.95rem;
+}
+.callout.info { background: var(--info-bg); border-color: #3182ce; color: var(--info); }
+.callout.success { background: var(--success-bg); border-color: #38a169; color: var(--success); }
+.callout.warn { background: var(--warn-bg); border-color: #e53e3e; color: var(--warn); }
+.callout.analogy { background: #fdf6e3; border-color: #d69e2e; color: #744210; }
+@media (prefers-color-scheme: dark) {
+  .callout.info { background: #1a365d; color: #bee3f8; }
+  .callout.success { background: #1c4532; color: #c6f6d5; }
+  .callout.warn { background: #2d1515; color: #fed7d7; }
+  .callout.analogy { background: #2d2400; color: #faf089; }
+}
+[data-theme="dark"] .callout.info { background: #1a365d; color: #bee3f8; }
+[data-theme="dark"] .callout.success { background: #1c4532; color: #c6f6d5; }
+[data-theme="dark"] .callout.warn { background: #2d1515; color: #fed7d7; }
+[data-theme="dark"] .callout.analogy { background: #2d2400; color: #faf089; }
+[data-theme="light"] .callout.analogy { background: #fdf6e3; color: #744210; }
+.callout-title { font-weight: 700; margin-bottom: 4px; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ====== COLLAPSIBLE SECTIONS ====== */
+details { border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; overflow: hidden; }
+details summary {
+  background: var(--bg3);
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::before { content: '▶'; font-size: 10px; transition: transform 0.2s; flex-shrink: 0; }
+details[open] summary::before { transform: rotate(90deg); }
+details summary:hover { background: var(--border); }
+.details-body { padding: 16px 20px; }
+
+/* ====== TABLES ====== */
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+th { background: var(--accent); color: #fff; padding: 10px 14px; text-align: left; font-weight: 600; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+tr:nth-child(even) td { background: var(--bg3); }
+
+/* ====== INTERACTIVE DEMOS ====== */
+.demo-box {
+  border: 2px solid var(--accent2);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 24px 0;
+  background: var(--bg2);
+  box-shadow: var(--shadow);
+}
+.demo-box h4 {
+  margin-top: 0;
+  color: var(--accent);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.demo-label { font-size: 0.8rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 4px; }
+.demo-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Cascadia Code', monospace;
+  font-size: 0.88rem;
+  margin-bottom: 12px;
+}
+.demo-input:focus { outline: 2px solid var(--accent2); border-color: var(--accent2); }
+.demo-output {
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-family: 'Cascadia Code', monospace;
+  font-size: 0.84rem;
+  min-height: 40px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.demo-test-area {
+  margin-top: 12px;
+}
+.demo-test-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.88rem;
+  margin-bottom: 8px;
+}
+.match-highlight { background: #ffff99; color: #000; border-radius: 2px; padding: 1px 2px; }
+.match-blocked { background: #fed7d7; color: #742a2a; border-radius: 2px; padding: 1px 2px; text-decoration: line-through; }
+.demo-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 18px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  transition: opacity 0.15s;
+  margin-right: 8px;
+  margin-top: 4px;
+}
+.demo-btn:hover { opacity: 0.85; }
+.demo-btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+.demo-explanation { font-size: 0.85rem; color: var(--text2); margin-top: 10px; padding: 10px 12px; background: var(--bg3); border-radius: 6px; }
+
+/* ====== ARCHITECTURE DIAGRAM ====== */
+#arch-diagram {
+  width: 100%;
+  max-width: 700px;
+  margin: 20px auto;
+  display: block;
+  cursor: default;
+}
+.arch-node {
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.arch-node:hover rect, .arch-node:hover ellipse { filter: brightness(1.15); }
+.arch-panel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-top: 12px;
+  font-size: 0.9rem;
+  display: none;
+  animation: fadeIn 0.2s ease;
+}
+.arch-panel.visible { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* ====== HIGHLIGHTER DEMO ====== */
+#hl-demo-text {
+  font-size: 1rem;
+  line-height: 1.8;
+  padding: 14px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  min-height: 60px;
+}
+.hl-span { background: #ffff99; color: #000; border-radius: 3px; padding: 1px 3px; cursor: pointer; font-weight: 600; border: 2px solid transparent; }
+.hl-span.current { background: #ff6b35; color: #fff; border-color: #c53030; }
+.hl-span:hover { border-color: #e53e3e; }
+.hl-group-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; border-radius: 10px; padding: 1px 6px; margin-left: 4px; }
+#hl-step-info { margin-top: 12px; font-size: 0.88rem; }
+.step-box { background: var(--bg3); border-radius: 6px; padding: 10px 14px; margin-top: 8px; }
+.step-progress { font-size: 0.8rem; color: var(--text2); margin-top: 8px; }
+
+/* ====== PROGRESS BAR ====== */
+.progress-bar { height: 4px; background: var(--bg3); border-radius: 2px; margin-bottom: 20px; }
+.progress-fill { height: 100%; background: var(--accent2); border-radius: 2px; transition: width 0.3s; }
+
+/* ====== INTRO HERO ====== */
+.hero {
+  background: linear-gradient(135deg, var(--accent) 0%, #1a3a4a 100%);
+  color: #fff;
+  border-radius: 12px;
+  padding: 32px 36px;
+  margin-bottom: 32px;
+}
+.hero h1 { color: #fff; font-size: 1.8rem; }
+.hero p { color: rgba(255,255,255,0.85); margin-bottom: 0; font-size: 1.05rem; }
+.hero .pill {
+  display: inline-block; background: rgba(255,255,255,0.15);
+  border-radius: 20px; padding: 3px 12px; font-size: 0.8rem;
+  margin: 4px 4px 12px 0;
+}
+
+/* ====== TERM DEFINITION ====== */
+.term { font-weight: 700; color: var(--accent); border-bottom: 2px dotted var(--accent2); cursor: help; }
+
+/* ====== DATA FLOW ====== */
+.flow-step {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 14px; border-left: 3px solid var(--accent2);
+  margin-bottom: 4px; background: var(--bg2); border-radius: 0 6px 6px 0;
+}
+.flow-num { background: var(--accent); color: #fff; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; margin-top: 2px; }
+.flow-arrow { text-align: center; color: var(--accent2); font-size: 1.2rem; margin: 2px 0; padding-left: 42px; }
+
+/* ====== FOOTER ====== */
+footer { border-top: 1px solid var(--border); padding: 24px 0 0; margin-top: 60px; color: var(--text2); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+
+<!-- ====== SIDEBAR ====== -->
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <span>findMentions Tutorial</span>
+    <button id="theme-btn" title="Toggle dark/light mode">🌙</button>
+  </div>
+  <div id="toc"></div>
+</nav>
+
+<!-- ====== MAIN CONTENT ====== -->
+<main id="main">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="pill">Chrome Extension</div>
+  <div class="pill">Manifest V3</div>
+  <div class="pill">No-Programmer-Left-Behind</div>
+  <h1>findMentions</h1>
+  <p>How the extension works — from first principles to live interactive demos. Written so anyone can understand it, including people who have never written a line of code.</p>
+</div>
+
+<!-- ====== SECTION 1: OVERVIEW ====== -->
+<h2 id="s1">1. What Does This App Do?</h2>
+
+<p>Imagine you're a media analyst at a research firm. Every day, dozens — sometimes hundreds — of news articles mention pharmaceutical companies like Pfizer, Eli Lilly, or Johnson &amp; Johnson. Your job is to read each article, decide whether it's relevant, record the company mentioned, note the tone (positive, negative, neutral), and tag what topic it covers (earnings, lawsuits, new drugs, etc.).</p>
+
+<p>Doing that by hand for hundreds of articles is exhausting. <strong>findMentions</strong> automates the tedious parts:</p>
+
+<ul>
+  <li>It opens each article URL automatically.</li>
+  <li>It finds and <span style="background:#ffff99;padding:1px 4px;border-radius:3px;color:#000">highlights</span> every mention of the company you're looking for.</li>
+  <li>It figures out when the article was published.</li>
+  <li>It lets you click KEEP or DELETE, choose a sentiment, pick a topic, and move straight to the next article — all without touching a URL or a spreadsheet manually.</li>
+  <li>When you're done, it produces a finished spreadsheet with everything filled in.</li>
+</ul>
+
+<div class="callout analogy">
+  <div class="callout-title">The big picture analogy</div>
+  Think of the extension as a research assistant who sits beside you, opens each article in a browser tab, uses a yellow highlighter pen to mark all company mentions, then waits while you make a judgment call before flipping to the next article — all while keeping a running tally in a spreadsheet.
+</div>
+
+<h3 id="s1-1">Who Uses It?</h3>
+<p>Media analysts and researchers at Gravity Research who review news coverage of pharmaceutical and medical-device companies. The app is designed specifically for the pharma/medtech space, with built-in support for company name variations ("GSK" vs "GlaxoSmithKline") and false-positive suppression ("Lilly" should not match "Lilly Pulitzer").</p>
+
+<!-- ====== SECTION 2: WHAT IS A CHROME EXTENSION ====== -->
+<h2 id="s2">2. What Is a Chrome Extension?</h2>
+
+<p>Before we can understand how the code works, we need to understand what a Chrome Extension <em>is</em> — and what makes it different from an ordinary website.</p>
+
+<h3 id="s2-1">A website vs. an extension</h3>
+<p>When you visit a website, the website's code lives on a server somewhere and runs inside your browser tab. It can only affect that one tab, and it can't access your other tabs or your browser settings.</p>
+<p>A <strong class="term">Chrome Extension</strong> is a small program that's installed <em>inside</em> Chrome itself, not just in a tab. Because of that special position, it can do things a website can't:</p>
+
+<table>
+  <tr><th>A regular website can...</th><th>A Chrome Extension can also...</th></tr>
+  <tr><td>Show you content in a tab</td><td>Open a side panel attached to the whole browser window</td></tr>
+  <tr><td>Read and modify its own page</td><td>Read and modify <em>any</em> page you open (with your permission)</td></tr>
+  <tr><td>Store data in a cookie</td><td>Store data in Chrome's built-in storage (survives tab close)</td></tr>
+  <tr><td>Make network requests</td><td>Intercept and modify network requests from any tab</td></tr>
+  <tr><td>Run only when a tab is open</td><td>Run a background process that wakes on events</td></tr>
+</table>
+
+<h3 id="s2-2">Permissions: asking for trust</h3>
+<p>Because extensions are powerful, Chrome requires them to <em>declare upfront</em> exactly what they can do. This declaration lives in a file called <code>manifest.json</code>. When you install an extension, Chrome shows you the permissions list so you can decide whether to trust it.</p>
+
+<div class="callout info">
+  <div class="callout-title">Key concept: permissions</div>
+  A <strong>permission</strong> is a specific capability that the extension is allowed to use. For example, the <code>"tabs"</code> permission lets an extension know which tabs are open. Without it, the extension is blind to them. findMentions must declare the permissions it needs to scan web pages, open a side panel, and store your review progress.
+</div>
+
+<!-- ====== SECTION 3: ARCHITECTURE ====== -->
+<h2 id="s3">3. Architecture: Three Worlds Inside One Extension</h2>
+
+<p>findMentions is made of three separate programs that run in three completely isolated environments. They can only talk to each other through a specific messaging system — like three employees in different rooms who can only communicate by passing notes through a slot in the wall.</p>
+
+<p>Click on each box in the diagram below to learn what that part does:</p>
+
+<svg id="arch-diagram" viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Architecture diagram">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#98D2C5"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="700" height="320" rx="12" fill="none" stroke="#98D2C5" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="16" y="22" font-size="11" fill="#98D2C5" font-family="monospace">Chrome Browser</text>
+
+  <!-- Background SW box -->
+  <g class="arch-node" id="arch-bg" onclick="showArchPanel('bg')">
+    <rect x="20" y="36" width="180" height="80" rx="8" fill="#374B5C" stroke="#98D2C5" stroke-width="1.5"/>
+    <text x="110" y="62" font-size="12" fill="#fff" font-weight="bold" text-anchor="middle">background.js</text>
+    <text x="110" y="80" font-size="10" fill="#98D2C5" text-anchor="middle">Service Worker</text>
+    <text x="110" y="96" font-size="10" fill="#94a3b8" text-anchor="middle">Wakes on events only</text>
+    <text x="110" y="108" font-size="9" fill="#64748b" text-anchor="middle">→ click to learn more</text>
+  </g>
+
+  <!-- Sidebar box -->
+  <g class="arch-node" id="arch-sb" onclick="showArchPanel('sb')">
+    <rect x="260" y="36" width="200" height="110" rx="8" fill="#1a4a3a" stroke="#98D2C5" stroke-width="2"/>
+    <text x="360" y="62" font-size="12" fill="#fff" font-weight="bold" text-anchor="middle">sidebar.js</text>
+    <text x="360" y="80" font-size="10" fill="#98D2C5" text-anchor="middle">Side Panel (The Brain)</text>
+    <text x="360" y="96" font-size="10" fill="#94a3b8" text-anchor="middle">• Loads CSV files</text>
+    <text x="360" y="110" font-size="10" fill="#94a3b8" text-anchor="middle">• Manages all state</text>
+    <text x="360" y="124" font-size="9" fill="#64748b" text-anchor="middle">→ click to learn more</text>
+  </g>
+
+  <!-- Content Script box -->
+  <g class="arch-node" id="arch-cs" onclick="showArchPanel('cs')">
+    <rect x="520" y="36" width="160" height="110" rx="8" fill="#3a1a1a" stroke="#f07178" stroke-width="1.5"/>
+    <text x="600" y="62" font-size="12" fill="#fff" font-weight="bold" text-anchor="middle">content.js</text>
+    <text x="600" y="80" font-size="10" fill="#f07178" text-anchor="middle">Content Script</text>
+    <text x="600" y="96" font-size="10" fill="#94a3b8" text-anchor="middle">• Reads the web page</text>
+    <text x="600" y="110" font-size="10" fill="#94a3b8" text-anchor="middle">• Adds highlights</text>
+    <text x="600" y="124" font-size="9" fill="#64748b" text-anchor="middle">→ click to learn more</text>
+  </g>
+
+  <!-- Article page box -->
+  <g class="arch-node" id="arch-page" onclick="showArchPanel('page')">
+    <rect x="520" y="170" width="160" height="60" rx="8" fill="#2d1a00" stroke="#ffcb6b" stroke-width="1.5"/>
+    <text x="600" y="197" font-size="12" fill="#ffcb6b" font-weight="bold" text-anchor="middle">Article Page</text>
+    <text x="600" y="215" font-size="10" fill="#94a3b8" text-anchor="middle">DOM: the article's HTML</text>
+    <text x="600" y="227" font-size="9" fill="#64748b" text-anchor="middle">→ click to learn more</text>
+  </g>
+
+  <!-- Storage box -->
+  <g class="arch-node" id="arch-store" onclick="showArchPanel('store')">
+    <rect x="260" y="170" width="200" height="60" rx="8" fill="#1a1a3a" stroke="#c792ea" stroke-width="1.5"/>
+    <text x="360" y="197" font-size="12" fill="#c792ea" font-weight="bold" text-anchor="middle">chrome.storage.local</text>
+    <text x="360" y="213" font-size="10" fill="#94a3b8" text-anchor="middle">Persistent state across sessions</text>
+    <text x="360" y="225" font-size="9" fill="#64748b" text-anchor="middle">→ click to learn more</text>
+  </g>
+
+  <!-- Arrows -->
+  <!-- BG → Sidebar (opens panel) -->
+  <path d="M200,76 L256,76" stroke="#98D2C5" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="228" y="70" font-size="8" fill="#98D2C5" text-anchor="middle">opens</text>
+
+  <!-- Sidebar → Content Script (sendMessage) -->
+  <path d="M460,91 L516,91" stroke="#98D2C5" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="488" y="85" font-size="8" fill="#98D2C5" text-anchor="middle">sendMsg</text>
+
+  <!-- Content Script ↔ Article Page -->
+  <path d="M600,146 L600,166" stroke="#ffcb6b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="615" y="160" font-size="8" fill="#ffcb6b">modifies</text>
+
+  <!-- Content Script → Sidebar (runtime.sendMessage) -->
+  <path d="M520,130 L460,150 L460,170" stroke="#f07178" stroke-width="1.5" fill="none" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="475" y="145" font-size="8" fill="#f07178" text-anchor="middle">events back</text>
+
+  <!-- Sidebar ↔ Storage -->
+  <path d="M360,146 L360,166" stroke="#c792ea" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="378" y="160" font-size="8" fill="#c792ea">save/load</text>
+
+  <!-- Legend -->
+  <text x="20" y="270" font-size="10" fill="#98D2C5">━━</text>
+  <text x="38" y="270" font-size="10" fill="#94a3b8">Direct message</text>
+  <text x="20" y="285" font-size="10" fill="#f07178">╌╌</text>
+  <text x="38" y="285" font-size="10" fill="#94a3b8">Event-based message</text>
+  <text x="20" y="300" font-size="10" fill="#64748b">Click any box to learn more</text>
+</svg>
+
+<div id="arch-panel-bg" class="arch-panel">
+  <strong>background.js — The Gatekeeper</strong><br><br>
+  This is a tiny program that runs in the background of Chrome. In Manifest V3, it's called a <strong>service worker</strong>, which means it wakes up only when something happens (like the user clicking the extension icon), does its job, and goes back to sleep. It can't hold onto data between wakeups.<br><br>
+  <strong>What it does in findMentions:</strong>
+  <ul style="margin-top:8px">
+    <li>When you click the extension icon → opens the side panel</li>
+    <li>Ensures the side panel is enabled on every new tab</li>
+    <li>Logs startup/install events</li>
+  </ul>
+  <strong>Why it doesn't do more:</strong> The side panel (sidebar.js) can talk directly to the content script — the background doesn't need to relay messages.
+</div>
+
+<div id="arch-panel-sb" class="arch-panel">
+  <strong>sidebar.js — The Brain</strong><br><br>
+  This is the main program. It lives in the side panel — the UI you see on the right side of your browser. Unlike the background script, it stays alive as long as the panel is open.<br><br>
+  <strong>What it does:</strong>
+  <ul style="margin-top:8px">
+    <li>Loads and parses your CSV files</li>
+    <li>Builds the regex patterns for company name matching</li>
+    <li>Opens article URLs in browser tabs</li>
+    <li>Tells the content script to scan the page</li>
+    <li>Receives results and updates the UI</li>
+    <li>Saves your progress to chrome.storage.local</li>
+    <li>Writes the output CSV</li>
+  </ul>
+</div>
+
+<div id="arch-panel-cs" class="arch-panel">
+  <strong>content.js — The DOM Worker</strong><br><br>
+  This script is injected into every article page you open. It runs inside the article's web page — but in an isolated bubble, so it can't accidentally break the page or access the page's own JavaScript variables.<br><br>
+  <strong>What it does:</strong>
+  <ul style="margin-top:8px">
+    <li>Scans the page's text for company name matches</li>
+    <li>Wraps matches in yellow highlight spans</li>
+    <li>Handles Shift+click to remove a highlight</li>
+    <li>Extracts article body text</li>
+    <li>Detects the article's publication date</li>
+  </ul>
+  <strong>The "note through the wall" rule:</strong> content.js can only talk to the side panel by calling <code>chrome.runtime.sendMessage()</code>. It cannot call most Chrome APIs directly.
+</div>
+
+<div id="arch-panel-page" class="arch-panel">
+  <strong>The Article Page — Raw Material</strong><br><br>
+  This is the actual news article opened in a Chrome tab. The browser builds a <strong>DOM</strong> (<strong>D</strong>ocument <strong>O</strong>bject <strong>M</strong>odel) from the page's HTML — essentially a tree of every paragraph, heading, image, and link on the page.<br><br>
+  content.js walks this tree to find company name mentions and inserts highlight spans into it. The highlights appear visually on the page because they're real DOM modifications — the same as if you opened the browser's developer tools and manually edited the HTML.
+</div>
+
+<div id="arch-panel-store" class="arch-panel">
+  <strong>chrome.storage.local — The Filing Cabinet</strong><br><br>
+  Chrome provides extensions with their own persistent key-value storage. Think of it as a filing cabinet that survives browser restarts.<br><br>
+  findMentions stores: your CSV data, current position in the review, company variations map, topic hierarchy, and column name mappings — so if you close the extension and come back tomorrow, you pick up exactly where you left off.<br><br>
+  <strong>Limitation:</strong> Each value has a size limit. Article body text (which can be long) is stripped before saving to avoid hitting the quota.
+</div>
+
+<!-- ====== SECTION 4: MANIFEST ====== -->
+<h2 id="s4">4. The Manifest: The Extension's ID Card</h2>
+
+<p>Every Chrome Extension must include a file called <code>manifest.json</code>. Think of it as the extension's official ID card — it tells Chrome who the extension is, what it wants to do, and what special abilities it needs permission to use.</p>
+
+<div class="callout analogy">
+  <div class="callout-title">Analogy: a building access badge</div>
+  When a new contractor arrives at a building, they're given a badge that says "this person is allowed to enter rooms A, C, and F — not B or D." The manifest is that badge. Chrome reads it when the extension is installed and enforces those access rules forever.
+</div>
+
+<details open>
+  <summary>📄 manifest.json — annotated line by line</summary>
+  <div class="details-body">
+<div class="code-block">
+<div class="code-label">manifest.json</div>
+<pre>{
+  <span class="attr">"manifest_version"</span>: <span class="num">3</span>,        <span class="cmt">// Must be 3 for all modern extensions</span>
+  <span class="attr">"name"</span>: <span class="str">"CSV Link Reviewer - Sidebar"</span>,
+  <span class="attr">"version"</span>: <span class="str">"1.0"</span>,
+
+  <span class="attr">"permissions"</span>: [
+    <span class="str">"activeTab"</span>,      <span class="cmt">// Access the tab the user is looking at</span>
+    <span class="str">"storage"</span>,        <span class="cmt">// Use chrome.storage to save progress</span>
+    <span class="str">"unlimitedStorage"</span>, <span class="cmt">// Remove the default 10 MB storage cap</span>
+    <span class="str">"scripting"</span>,      <span class="cmt">// Inject content.js into article pages</span>
+    <span class="str">"sidePanel"</span>,      <span class="cmt">// Open the side panel</span>
+    <span class="str">"identity"</span>        <span class="cmt">// Google OAuth for BigQuery mode</span>
+  ],
+
+  <span class="attr">"host_permissions"</span>: [
+    <span class="str">"http://*/*"</span>,     <span class="cmt">// Send messages to any http page</span>
+    <span class="str">"https://*/*"</span>    <span class="cmt">// Send messages to any https page</span>
+  ],
+
+  <span class="attr">"action"</span>: {
+    <span class="attr">"default_title"</span>: <span class="str">"CSV Link Reviewer"</span>
+    <span class="cmt">// No popup — clicking the icon runs the background.js handler</span>
+  },
+
+  <span class="attr">"side_panel"</span>: {
+    <span class="attr">"default_path"</span>: <span class="str">"sidebar.html"</span>  <span class="cmt">// Which HTML file to show in the panel</span>
+  },
+
+  <span class="attr">"content_scripts"</span>: [{
+    <span class="attr">"matches"</span>: [<span class="str">"&lt;all_urls&gt;"</span>],  <span class="cmt">// Inject into EVERY page</span>
+    <span class="attr">"js"</span>: [<span class="str">"content.js"</span>],
+    <span class="attr">"css"</span>: [<span class="str">"content.css"</span>]   <span class="cmt">// Inject highlight styles too</span>
+  }],
+
+  <span class="attr">"background"</span>: {
+    <span class="attr">"service_worker"</span>: <span class="str">"background.js"</span>
+  },
+
+  <span class="attr">"web_accessible_resources"</span>: [{
+    <span class="attr">"resources"</span>: [<span class="str">"sidebar.html"</span>, <span class="str">"gravityresearch_logo.png"</span>],
+    <span class="attr">"matches"</span>: [<span class="str">"&lt;all_urls&gt;"</span>]
+    <span class="cmt">// Allows the logo to load inside the extension's side panel iframe</span>
+  }]
+}</pre>
+</div>
+
+<h4>Why does it need <code>"scripting"</code> AND <code>"content_scripts"</code>?</h4>
+<p>The <code>content_scripts</code> block is a <em>declarative</em> injection: Chrome automatically injects content.js into every page when it loads. The <code>"scripting"</code> permission enables a <em>programmatic</em> injection: sidebar.js can manually inject content.js into a tab that was already open before the extension loaded — a fallback safety net. Both are needed.</p>
+  </div>
+</details>
+
+<!-- ====== SECTION 5: SIDE PANEL ====== -->
+<h2 id="s5">5. The Side Panel: sidebar.js</h2>
+
+<p>sidebar.js is the longest and most complex file. It's organized as a single JavaScript <strong class="term">class</strong> — think of a class as a blueprint for an object that has both data (like a spreadsheet's current row number) and abilities (like "load a CSV file" or "move to the next article").</p>
+
+<div class="callout analogy">
+  <div class="callout-title">Analogy: the class as a filing system</div>
+  The <code>CSVReviewer</code> class is like a filing system sitting on your desk. It holds folders for your CSV data, your current position, your company name lists, and your topic categories. It also has a set of procedures — labeled steps you can follow to do things like "load a new file" or "decide on an article."
+</div>
+
+<h3 id="s5-1">State: what the extension remembers</h3>
+
+<p>A <strong class="term">variable</strong> is a named box that holds a piece of information. The class maintains several important variables:</p>
+
+<table>
+  <tr><th>Variable</th><th>What it holds</th><th>Plain English</th></tr>
+  <tr><td><code>csvData</code></td><td>Array of article rows</td><td>The entire spreadsheet, loaded into memory</td></tr>
+  <tr><td><code>currentIndex</code></td><td>Number</td><td>Which article row we're reviewing right now (starts at 0)</td></tr>
+  <tr><td><code>variationsMap</code></td><td>Object/dictionary</td><td>The lookup table of company name variations</td></tr>
+  <tr><td><code>exclusionsMap</code></td><td>Object/dictionary</td><td>The lookup table of phrases to suppress</td></tr>
+  <tr><td><code>currentTabId</code></td><td>Number or null</td><td>Chrome's ID number for the open article tab</td></tr>
+  <tr><td><code>selectedCompanies</code></td><td>Array of strings</td><td>Companies the analyst has checked in the checklist</td></tr>
+  <tr><td><code>cols</code></td><td>Object</td><td>Which column name maps to which field (e.g. "corporation" = company column)</td></tr>
+</table>
+
+<p>Most of these are saved to <code>chrome.storage.local</code> whenever they change, so the extension can resume after being closed.</p>
+
+<h3 id="s5-2">CSV parsing: reading a spreadsheet</h3>
+
+<p>A <strong class="term">CSV file</strong> (<strong>C</strong>omma-<strong>S</strong>eparated <strong>V</strong>alues) is a plain text file where each row of a spreadsheet is one line, and cells are separated by commas. For example:</p>
+
+<div class="code-block">
+<div class="code-label">example.csv</div>
+<pre>company,link,date
+Pfizer,https://example.com/article1,2026-04-22
+Eli Lilly,https://example.com/article2,2026-04-23</pre>
+</div>
+
+<p>The extension has its own hand-written CSV parser that handles a tricky edge case: what if a cell's text <em>contains</em> a comma? (Article body text often does.) The solution is quoting: if a field contains a comma, wrap the whole field in double quotes. The parser correctly handles this, plus escaped quotes (<code>""</code> inside a quoted field means a literal <code>"</code>).</p>
+
+<details>
+  <summary>📖 Deep dive: how the RFC 4180 CSV parser works</summary>
+  <div class="details-body">
+    <p>The parser reads the file one character at a time. It tracks whether it's inside a quoted field or not. If it encounters a <code>"</code> character when not in a quoted field, it enters quote mode and collects everything until the closing <code>"</code> — even if that spans multiple lines. This is how multi-paragraph article body text can be stored in a single cell.</p>
+<div class="code-block">
+<div class="code-label">sidebar.js — parseCSV() simplified</div>
+<pre><span class="kw">if</span> (text[i] === <span class="str">'"'</span>) {
+  <span class="cmt">// Quoted field: read until the next " that isn't doubled</span>
+  <span class="kw">let</span> field = <span class="str">''</span>;
+  i++;  <span class="cmt">// skip the opening quote</span>
+  <span class="kw">while</span> (i &lt; n) {
+    <span class="kw">if</span> (text[i] === <span class="str">'"'</span> &amp;&amp; text[i+<span class="num">1</span>] === <span class="str">'"'</span>) {
+      field += <span class="str">'"'</span>; i += <span class="num">2</span>;  <span class="cmt">// "" → one literal "  </span>
+    } <span class="kw">else if</span> (text[i] === <span class="str">'"'</span>) {
+      i++; <span class="kw">break</span>;           <span class="cmt">// closing quote → end of field</span>
+    } <span class="kw">else</span> {
+      field += text[i++];   <span class="cmt">// regular character → add to field</span>
+    }
+  }
+  row.push(field);
+}</pre>
+</div>
+  </div>
+</details>
+
+<h3 id="s5-3">Company variations: the lookup tables</h3>
+
+<p>The extension needs two lookup tables built from the company variations CSV. Here's what happens when it reads a row like <code>Eli Lilly,!Lilly Endowment</code>:</p>
+
+<ul>
+  <li>Column 1 (<code>Eli Lilly</code>) → the canonical (official) company name</li>
+  <li>Column 2 starts with <code>!</code> → this is an <strong>exclusion phrase</strong>, not a search term</li>
+  <li>The phrase after <code>!</code> (<code>Lilly Endowment</code>) goes into <code>exclusionsMap["Eli Lilly"]</code></li>
+</ul>
+
+<div class="code-block">
+<div class="code-label">Result after loading companies_to_find.csv (Eli Lilly rows)</div>
+<pre><span class="cmt">// variationsMap: what to search FOR</span>
+variationsMap[<span class="str">"Eli Lilly"</span>] = [<span class="str">"Eli Lilly"</span>, <span class="str">"Lilly"</span>]
+
+<span class="cmt">// exclusionsMap: what to NEVER match</span>
+exclusionsMap[<span class="str">"Eli Lilly"</span>] = [<span class="str">"Lilly Endowment"</span>, <span class="str">"Lilly Foundation"</span>, <span class="str">"Lilly school"</span>]</pre>
+</div>
+
+<h3 id="s5-4">Generating a regex pattern</h3>
+
+<p>This is the heart of the search engine. A <strong class="term">regular expression</strong> (regex) is a special text pattern that describes what to search for — like a smarter, more powerful version of Ctrl+F. Instead of searching for one exact phrase, a regex can express rules like "match any of these five spellings, but only as a whole word, and not if followed by these words."</p>
+
+<div class="callout analogy">
+  <div class="callout-title">Analogy: a regex is like a postal sorting rule</div>
+  Imagine you're sorting mail and you write a rule: "Deliver to the Lilly family — but NOT if the envelope says 'Lilly Endowment' or 'Lilly Foundation', because those are different organizations." That's exactly what the exclusion regex does.
+</div>
+
+<h4>Try it live: Regex Pattern Generator</h4>
+
+<div class="demo-box">
+  <h4>🔬 Regex Generator</h4>
+  <p style="font-size:0.88rem;color:var(--text2);margin-bottom:14px">Fill in the fields below to see the search pattern that would be generated for a company. The pattern updates as you type.</p>
+
+  <div class="demo-label">Company name (canonical)</div>
+  <input class="demo-input" id="rg-company" value="Eli Lilly" oninput="updateRegex()">
+
+  <div class="demo-label">Search variations (one per line — these all get matched)</div>
+  <textarea class="demo-input" id="rg-variations" rows="3" oninput="updateRegex()" style="resize:vertical">Eli Lilly
+Lilly</textarea>
+
+  <div class="demo-label">Exclusions (one per line — phrases that should NOT match)</div>
+  <textarea class="demo-input" id="rg-exclusions" rows="3" oninput="updateRegex()" style="resize:vertical">Lilly Endowment
+Lilly Foundation
+Lilly school</textarea>
+
+  <div class="demo-label" style="margin-top:8px">Generated regex pattern</div>
+  <div class="demo-output" id="rg-output"></div>
+
+  <div class="demo-test-area">
+    <div class="demo-label">Test sentence (type a sentence containing the company name)</div>
+    <input class="demo-test-input" id="rg-test" value="Lilly reported strong Q1 earnings. However, Lilly Endowment is a separate nonprofit. Eli Lilly stock rose 3%." oninput="testRegex()">
+    <div class="demo-output" id="rg-test-output" style="min-height:50px"></div>
+    <div class="demo-explanation" id="rg-explanation"></div>
+  </div>
+</div>
+
+<details>
+  <summary>📖 How generateCompanyRegexPattern() works — step by step</summary>
+  <div class="details-body">
+    <p>The function builds the pattern in five steps. Here's the algorithm traced through the Eli Lilly example:</p>
+
+<div class="code-block">
+<div class="code-label">sidebar.js — generateCompanyRegexPattern("Eli Lilly")</div>
+<pre><span class="cmt">// Step 1: Collect all search terms</span>
+allTerms = [<span class="str">"Eli Lilly"</span>, <span class="str">"Lilly"</span>]  <span class="cmt">// company + variations</span>
+
+<span class="cmt">// Step 2: Escape special characters for regex</span>
+<span class="cmt">// "Johnson & Johnson" → "Johnson \& Johnson" (& is special in some regex flavors)</span>
+cleanedTerms = [<span class="str">"Eli Lilly"</span>, <span class="str">"Lilly"</span>]
+
+<span class="cmt">// Step 3: Build exclusion suffixes</span>
+<span class="cmt">// "Lilly Endowment" starts with "Lilly" → suffix is "endowment"</span>
+<span class="cmt">// "Lilly Foundation" → suffix is "foundation"</span>
+<span class="cmt">// "Lilly school"     → suffix is "school"</span>
+suffixes = { <span class="str">"endowment"</span>, <span class="str">"foundation"</span>, <span class="str">"school"</span> }
+
+<span class="cmt">// Step 4: Wrap suffixes in a "negative lookahead"</span>
+<span class="cmt">// (?!\s+(?:...)) means "not followed by whitespace then any of these"</span>
+negativeLookahead = <span class="str">"(?!\\s+(?:endowment|foundation|school))"</span>
+
+<span class="cmt">// Step 5: Assemble the final pattern</span>
+<span class="cmt">// \b = word boundary (only match whole words)</span>
+pattern = <span class="str">"\\b(?:Eli Lilly|Lilly)(?!\\s+(?:endowment|foundation|school))\\b"</span>
+flags   = <span class="str">"gi"</span>  <span class="cmt">// g = find ALL matches; i = case-insensitive</span></pre>
+</div>
+
+<p>The <strong class="term">word boundary</strong> (<code>\b</code>) is a magic position in the regex that matches where a word starts or ends — between a letter/digit and a space or punctuation. This prevents "Lilly" from matching "Lillyhammer" or "illicitly".</p>
+
+<p>The <strong class="term">negative lookahead</strong> (<code>(?!...)</code>) says "match here ONLY IF what follows does NOT match this pattern." It fires immediately after the match, before the final word boundary. So "Lilly Endowment" is tested as: does "Lilly" match? Yes. Does what follows match <code>\s+(?:endowment|foundation|school)</code>? Yes → reject the whole match.</p>
+  </div>
+</details>
+
+<h3 id="s5-5">The article review flow</h3>
+
+<p>When the analyst clicks "Start Processing," the extension finds the first article that hasn't been reviewed yet and begins the review cycle. Here's the sequence:</p>
+
+<div class="flow-step"><div class="flow-num">1</div><div>Find the first row in <code>csvData</code> without a KEEP/DELETE label.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">2</div><div>Check if there's a preloaded background tab for this URL. If yes, activate it instantly. If no, navigate the current tab to the article URL.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">3</div><div>Wait for the page to finish loading (Chrome fires a "complete" event). Register the listener <em>before</em> navigating to avoid missing fast-loading pages.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">4</div><div>Ping the content script to confirm it's running. If not, inject it manually.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">5</div><div>Send the company's regex pattern to the content script → it scans the page, highlights matches, and reports back how many were found.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">6</div><div>Simultaneously, ask the content script to detect the article's publication date.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">7</div><div>Show the review panel. The analyst reads the article, navigates highlights, and clicks KEEP or DELETE.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">8</div><div>On KEEP: auto-extract article body text if a content column exists. Write the decision + all fields to <code>csvData</code>. Save state. Close the tab. Move to article N+1.</div></div>
+
+<h3 id="s5-6">Auto-preloading: staying ahead</h3>
+
+<p>After each article loads, the extension immediately opens the next 1–3 article URLs in <em>background tabs</em> (tabs the analyst can't see yet). By the time the analyst finishes reviewing the current article, the next ones are already loaded. This hides the page-load wait time.</p>
+
+<p>The preloaded tabs are stored in a <code>Map</code> (a data structure that connects keys to values, like a dictionary). When the extension needs the next article, it checks this map first.</p>
+
+<h3 id="s5-7">Multi-company rows</h3>
+
+<p>Sometimes an article mentions multiple companies. If the analyst checks more than one company in the checklist and clicks KEEP, the extension creates <em>duplicate rows</em> in the spreadsheet — one for each additional company — so each company gets its own review record. The duplicates are inserted right after the current row and automatically skipped during the next review cycle (they're already tagged).</p>
+
+<!-- ====== SECTION BQ: BIGQUERY WORKFLOW ====== -->
+<h2 id="sbq">The BigQuery Workflow</h2>
+
+<p>The extension has two completely independent ways to load its article work queue: from a CSV file on your computer, or directly from <strong class="term">BigQuery</strong> — Google's cloud database service. Both paths lead to the same article review experience; what changes is where the data comes from and where decisions are recorded. Neither workflow is "the primary one" — which you use depends on how your team works.</p>
+
+<div class="callout analogy">
+  <div class="callout-title">Analogy: desk filing cabinet vs shared cloud cabinet</div>
+  CSV mode is like a paper filing cabinet sitting on your own desk. You pull out a folder, work through it, write your notes, and put it back. Nobody else sees your notes until you email them a copy. BigQuery mode is a shared filing cabinet in the cloud. Every note you write is immediately visible to the whole team. There is no "your copy" — just one live record everyone reads and writes to simultaneously.
+</div>
+
+<h3 id="sbq-compare">CSV mode vs BigQuery mode at a glance</h3>
+
+<table>
+  <tr><th></th><th>CSV Mode</th><th>BigQuery Mode</th></tr>
+  <tr><td><strong>Work queue source</strong></td><td>CSV file uploaded from your computer</td><td>BigQuery table in Google Cloud</td></tr>
+  <tr><td><strong>Saving decisions</strong></td><td>Written to local memory; download a new CSV when done</td><td>Each decision is written to BigQuery immediately — no download step</td></tr>
+  <tr><td><strong>Team collaboration</strong></td><td>One analyst per file; merge manually</td><td>Multiple analysts, one live database</td></tr>
+  <tr><td><strong>Authentication required</strong></td><td>None — just drop in the file</td><td>Google OAuth sign-in (refreshes automatically every hour)</td></tr>
+  <tr><td><strong>Batch size</strong></td><td>Entire file</td><td>Up to 500 unreviewed rows per load</td></tr>
+  <tr><td><strong>State across sessions</strong></td><td>Full state saved; pick up where you left off</td><td>Row position saved; data re-fetched on reload</td></tr>
+  <tr><td><strong>When the batch is done</strong></td><td>Click "Download CSV"</td><td>Click "Load Data" again for next 500 rows</td></tr>
+</table>
+
+<h3 id="sbq-setup">Setup prerequisites</h3>
+
+<p>Before BigQuery mode can work, the following must exist on Google Cloud Platform (GCP):</p>
+
+<table>
+  <tr><th>Item</th><th>What it is</th></tr>
+  <tr><td><strong>GCP Project</strong></td><td><code>sri-benchmarking-databases</code> — the billing account and container for all cloud resources</td></tr>
+  <tr><td><strong>BigQuery Dataset</strong></td><td><code>coverage_collector</code> — a named folder inside the project that holds the tables</td></tr>
+  <tr><td><strong>Source table</strong></td><td><code>processed_serp_results</code> — your article work queue (rows to be reviewed)</td></tr>
+  <tr><td><strong>Output table</strong></td><td><code>validated_results</code> — where decisions are written; the extension auto-creates this on first use</td></tr>
+  <tr><td><strong>OAuth Client ID</strong></td><td>A long string ending in <code>.apps.googleusercontent.com</code>, created in GCP Console under APIs &amp; Services → Credentials</td></tr>
+  <tr><td><strong>Authorized redirect URI</strong></td><td><code>https://&lt;extension-id&gt;.chromiumapp.org/</code> — must be registered in the OAuth client; the sidebar shows your exact value</td></tr>
+</table>
+
+<div class="callout info">
+  <div class="callout-title">Finding your redirect URI</div>
+  The BQ configuration panel in the sidebar shows your exact redirect URI. Copy it and paste it into GCP Console → APIs &amp; Services → Credentials → your OAuth 2.0 Client → "Authorized redirect URIs." Without this registration, Google rejects every sign-in attempt with a <em>redirect_uri_mismatch</em> error.
+</div>
+
+<h3 id="sbq-toggle">Switching between modes</h3>
+
+<p>Two buttons at the top of the side panel — <strong>CSV Mode</strong> and <strong>BQ Mode</strong> — control which path is active. Clicking either button calls <code>setMode()</code>, which swaps out the visible controls:</p>
+
+<div class="code-block">
+<div class="code-label">sidebar.js — setMode()</div>
+<pre><span class="fn">setMode</span>(mode) {
+  <span class="kw">this</span>.bqMode = (mode === <span class="str">'bq'</span>);
+  <span class="cmt">// Show/hide the correct control panel</span>
+  document.<span class="fn">getElementById</span>(<span class="str">'csvSection'</span>).style.display = <span class="kw">this</span>.bqMode ? <span class="str">'none'</span>  : <span class="str">'block'</span>;
+  document.<span class="fn">getElementById</span>(<span class="str">'bqSection'</span>).style.display  = <span class="kw">this</span>.bqMode ? <span class="str">'block'</span> : <span class="str">'none'</span>;
+  <span class="cmt">// Highlight the active button</span>
+  document.<span class="fn">getElementById</span>(<span class="str">'csvModeBtn'</span>).classList.<span class="fn">toggle</span>(<span class="str">'mode-btn-active'</span>, !<span class="kw">this</span>.bqMode);
+  document.<span class="fn">getElementById</span>(<span class="str">'bqModeBtn'</span>).classList.<span class="fn">toggle</span>(<span class="str">'mode-btn-active'</span>,  <span class="kw">this</span>.bqMode);
+}</pre>
+</div>
+
+<p>Once BQ Mode is active, the file-upload section hides and the "Connect to Google" and "Load Data" controls appear. After loading, the article review experience is identical to CSV mode.</p>
+
+<h3 id="sbq-auth">Authentication: connecting to Google</h3>
+
+<p>BigQuery is a secured Google Cloud service. The extension needs an <strong class="term">access token</strong> — a temporary credential issued by Google after sign-in — to read and write data. This credential-exchange process is called <strong>OAuth 2.0</strong>. Think of it as a visitor badge: Google issues one after verifying your identity, and it's valid for one hour.</p>
+
+<p>Here is exactly what happens when the analyst clicks "Connect to Google":</p>
+
+<div class="flow-step"><div class="flow-num">1</div><div><strong>Build the sign-in URL.</strong> <code>bqConnect()</code> assembles a URL pointing to Google's OAuth sign-in page. It includes the OAuth Client ID, the scope being requested (<code>https://www.googleapis.com/auth/bigquery</code>), and a redirect URI that Chrome owns — unique to this specific extension installation.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">2</div><div><strong>Open the Google sign-in popup.</strong> <code>chrome.identity.launchWebAuthFlow({ interactive: true })</code> opens a popup managed entirely by Chrome. The analyst signs in with their Google account inside it. The extension never sees the password.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">3</div><div><strong>Google sends the token back.</strong> After a successful sign-in, Google redirects the browser to the extension's unique redirect URI (e.g. <code>https://abc123.chromiumapp.org/</code>). The access token and its expiry time are embedded in the URL hash — the text after the <code>#</code>.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">4</div><div><strong>Parse and store the token.</strong> Chrome passes the full redirect URL back to the extension. The code splits the hash on <code>&amp;</code>, reads <code>access_token</code> and <code>expires_in</code>, and stores them in memory. The stored expiry is set to <em>60 seconds before</em> the actual expiry as a safety buffer — the extension re-auths slightly early rather than sending a request with an already-expired token.</div></div>
+
+<div class="code-block">
+<div class="code-label">sidebar.js — bqConnect() (condensed)</div>
+<pre><span class="kw">const</span> redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
+<span class="kw">const</span> scope = <span class="fn">encodeURIComponent</span>(<span class="str">'https://www.googleapis.com/auth/bigquery'</span>);
+<span class="kw">const</span> authUrl = <span class="str">'https://accounts.google.com/o/oauth2/v2/auth'</span>
+  + <span class="str">`?client_id=${encodeURIComponent(bqConfig.clientId)}`</span>
+  + <span class="str">`&amp;redirect_uri=${encodeURIComponent(redirectUri)}&amp;response_type=token&amp;scope=${scope}`</span>;
+
+<span class="kw">const</span> responseUrl = <span class="kw">await</span> chrome.identity.<span class="fn">launchWebAuthFlow</span>({ url: authUrl, interactive: <span class="kw">true</span> });
+<span class="kw">const</span> hash = <span class="kw">new</span> <span class="fn">URL</span>(responseUrl).hash.substring(<span class="num">1</span>);
+<span class="kw">const</span> params = Object.<span class="fn">fromEntries</span>(hash.<span class="fn">split</span>(<span class="str">'&amp;'</span>).map(p =&gt; p.<span class="fn">split</span>(<span class="str">'='</span>)));
+
+<span class="kw">this</span>.bqToken       = params.access_token;
+<span class="kw">this</span>.bqTokenExpiry = Date.<span class="fn">now</span>() + (parseInt(params.expires_in, <span class="num">10</span>) - <span class="num">60</span>) * <span class="num">1000</span>;</pre>
+</div>
+
+<h3 id="sbq-fetch">Fetching the work queue from BigQuery</h3>
+
+<p>After signing in, the analyst clicks "Load Data." The extension runs two SQL queries against BigQuery simultaneously:</p>
+
+<ol>
+  <li>A <strong>data query</strong> that fetches up to 500 unreviewed articles.</li>
+  <li>A <strong>count query</strong> that tells the analyst how many unreviewed articles remain in total (so the status bar can show "Loaded 500 of 1,847 total — reload for more").</li>
+</ol>
+
+<p>The core logic uses a <strong class="term">LEFT JOIN</strong>. Think of two guest lists: everyone invited to a conference (<code>processed_serp_results</code>) and everyone already checked in (<code>validated_results</code>). The LEFT JOIN finds every person on the first list who does <em>not</em> appear on the second — the unchecked-in attendees who still need to be reviewed.</p>
+
+<div class="code-block">
+<div class="code-label">sidebar.js — bqLoadData() main SQL query</div>
+<pre>SELECT * EXCEPT(rn)
+FROM (
+  SELECT p.*,
+    <span class="cmt">-- Number rows within each (URL, company) group to eliminate duplicates</span>
+    ROW_NUMBER() OVER (PARTITION BY p.link, p.company ORDER BY p.link) AS rn
+  FROM `sri-benchmarking-databases.coverage_collector.processed_serp_results` p
+  LEFT JOIN `sri-benchmarking-databases.coverage_collector.validated_results` v
+    ON LOWER(TRIM(p.link))    = LOWER(TRIM(v.link))
+   AND (p.company IS NULL
+        OR LOWER(TRIM(p.company)) = LOWER(TRIM(v.company)))
+  WHERE v.link IS NULL                      <span class="cmt">-- rows with no match = not yet validated</span>
+    AND (p.date IS NULL OR p.date &gt;= <span class="str">'2026-04-01'</span>)
+)
+WHERE rn = <span class="num">1</span>                              <span class="cmt">-- drop duplicates: keep first per group</span>
+ORDER BY (company IS NULL OR TRIM(company) = <span class="str">''</span>) ASC, company, outlet
+LIMIT <span class="num">500</span></pre>
+</div>
+
+<p>Key clauses explained:</p>
+<ul>
+  <li><strong><code>LOWER(TRIM(...))</code></strong> — normalizes case and whitespace before comparing. "Pfizer" and " pfizer " are treated as the same.</li>
+  <li><strong><code>WHERE v.link IS NULL</code></strong> — after a LEFT JOIN, rows that found no matching partner in the right table have <code>NULL</code> in all right-side columns. This clause filters to only those unmatched rows — the ones not yet validated.</li>
+  <li><strong><code>ROW_NUMBER() OVER (PARTITION BY p.link, p.company)</code></strong> — a window function that assigns a sequence number within each (URL, company) group. <code>WHERE rn = 1</code> keeps only the first occurrence of any duplicate in the source table.</li>
+  <li><strong><code>LIMIT 500</code></strong> — the per-session batch cap. If more unreviewed articles remain, the status message prompts the analyst to reload for the next batch.</li>
+</ul>
+
+<h3 id="sbq-write">Writing decisions back to BigQuery</h3>
+
+<p>When the analyst clicks KEEP or DELETE, <code>writeValidationToBigQuery()</code> fires immediately. A parameterized SQL <code>INSERT</code> statement runs as a BigQuery job. The decision lands in <code>validated_results</code> and is visible to the whole team right away — no download, no upload, no merge.</p>
+
+<p><strong class="term">Parameterized queries</strong> protect against errors from special characters. Instead of injecting values directly into the SQL string, named placeholders like <code>@p_company</code> are used, and the actual values travel in a separate <code>queryParameters</code> array. BigQuery combines them safely server-side.</p>
+
+<div class="code-block">
+<div class="code-label">sidebar.js — writeValidationToBigQuery() (key lines)</div>
+<pre><span class="cmt">// All source columns + decision + timestamp</span>
+<span class="kw">const</span> row = { ...sourceFields, decision, validated_at: <span class="kw">new</span> Date().<span class="fn">toISOString</span>() };
+<span class="kw">const</span> cols = Object.<span class="fn">keys</span>(row);
+
+<span class="cmt">// BQ param names must be [a-zA-Z][a-zA-Z0-9_]* — prefix with p_ to be safe</span>
+<span class="kw">const</span> pname = c =&gt; `p_${c.replace(/[^a-zA-Z0-9_]/g, <span class="str">'_'</span>)}`;
+<span class="kw">const</span> colList   = cols.map(c =&gt; `\`${c}\``).join(<span class="str">', '</span>);
+<span class="kw">const</span> paramList = cols.map(c =&gt; `@${pname(c)}`).join(<span class="str">', '</span>);
+<span class="kw">const</span> sql = `INSERT INTO \`${projectId}.${datasetId}.validated_results\` (${colList}) VALUES (${paramList})`;
+
+<span class="cmt">// Each column becomes one parameter descriptor</span>
+<span class="kw">const</span> queryParameters = cols.map(c =&gt; ({
+  name: <span class="fn">pname</span>(c),
+  parameterType: { type: c === <span class="str">'validated_at'</span> ? <span class="str">'TIMESTAMP'</span> : <span class="str">'STRING'</span> },
+  parameterValue: { value: row[c] === null ? null : <span class="fn">String</span>(row[c]) }
+}));</pre>
+</div>
+
+<p>Two columns distinguish <code>validated_results</code> from the source table:</p>
+<ul>
+  <li><code>decision</code> (STRING) — the analyst's verdict: <code>"KEEP"</code> or <code>"DELETE"</code>.</li>
+  <li><code>validated_at</code> (TIMESTAMP) — the exact moment the decision was made, in ISO 8601 format (e.g. <code>2026-04-22T14:30:00.000Z</code>).</li>
+</ul>
+
+<h3 id="sbq-table">Auto-creating the output table</h3>
+
+<p>The first time "Load Data" is clicked, <code>bqEnsureValidatedTable()</code> runs a safety check. If <code>validated_results</code> doesn't exist yet, the extension creates it automatically — you never have to set it up manually in BigQuery Console.</p>
+
+<div class="flow-step"><div class="flow-num">1</div><div><strong>Check if the table exists.</strong> A GET request asks the BigQuery API for the <code>validated_results</code> table metadata. If it succeeds, the table exists — stop here, nothing to do.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">2</div><div><strong>If not found (HTTP 404): read the source schema.</strong> Fetch the column definitions (field names and data types) from <code>processed_serp_results</code>.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">3</div><div><strong>Append the two validation columns.</strong> Add <code>decision</code> (STRING) and <code>validated_at</code> (TIMESTAMP) to the end of the schema array.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">4</div><div><strong>Create the table.</strong> POST the complete schema to BigQuery. The table is ready for writes. All future sessions skip straight to step 1.</div></div>
+
+<h3 id="sbq-token">Token expiry and re-authentication</h3>
+
+<p>Google OAuth tokens expire after one hour. The extension handles re-authentication automatically so the analyst doesn't need to think about it. Before every API call, <code>bqGetToken()</code> checks whether the current token is still valid:</p>
+
+<div class="code-block">
+<div class="code-label">sidebar.js — bqGetToken()</div>
+<pre><span class="kw">async</span> <span class="fn">bqGetToken</span>() {
+  <span class="kw">if</span> (<span class="kw">this</span>.bqToken &amp;&amp; <span class="kw">this</span>.bqTokenExpiry &amp;&amp; Date.<span class="fn">now</span>() &lt; <span class="kw">this</span>.bqTokenExpiry) {
+    <span class="kw">return this</span>.bqToken;  <span class="cmt">// still valid — use it as-is</span>
+  }
+  <span class="cmt">// Expired or never set — silently re-authenticate</span>
+  <span class="kw">await this</span>.<span class="fn">bqConnect</span>();
+  <span class="kw">return this</span>.bqToken;
+}</pre>
+</div>
+
+<p>When the token expires mid-session, <code>bqConnect()</code> runs again. Because the analyst already granted the extension permission, Chrome often completes the re-auth silently — no popup appears. A popup reappears only if the analyst's underlying Google session has also expired (uncommon during a normal work session).</p>
+
+<h3 id="sbq-diagram">Interactive: CSV loop vs BigQuery loop</h3>
+
+<p>Both workflows share the article-opening, highlighting, and decision-making steps. They diverge at the "where does data come from?" and "how is the decision saved?" stages. Click any step card below to see a detailed explanation of what happens at that stage.</p>
+
+<div class="demo-box" id="bq-compare-box">
+  <h4>CSV Loop vs BigQuery Loop — click any step to explore</h4>
+  <div id="bq-compare-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+    <div>
+      <div style="font-weight:700;padding:8px 14px;background:var(--accent);color:#fff;border-radius:6px 6px 0 0;font-size:0.87rem;letter-spacing:0.3px;">CSV Workflow</div>
+      <div id="csv-step-list" style="border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;overflow:hidden;"></div>
+    </div>
+    <div>
+      <div style="font-weight:700;padding:8px 14px;background:var(--accent3);color:#fff;border-radius:6px 6px 0 0;font-size:0.87rem;letter-spacing:0.3px;">BigQuery Workflow</div>
+      <div id="bq-step-list" style="border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;overflow:hidden;"></div>
+    </div>
+  </div>
+  <div id="compare-detail-box" class="demo-explanation" style="margin-top:14px;min-height:72px;">Click any step above to see what happens at that stage.</div>
+</div>
+
+<!-- ====== SECTION 6: CONTENT SCRIPT ====== -->
+<h2 id="s6">6. The Content Script: content.js</h2>
+
+<p>content.js is injected into every article page. It's where the actual page reading and highlighting happens. The whole script lives inside a class called <code>PageSearcher</code>.</p>
+
+<h3 id="s6-1">The message dispatch table</h3>
+
+<p>The content script doesn't start doing anything on its own — it waits for instructions from the side panel. Those instructions arrive as <strong class="term">messages</strong> (think of them as phone calls). The script has a dispatcher that reads the <code>action</code> field of each message and routes it to the right function:</p>
+
+<div class="code-block">
+<div class="code-label">content.js — message dispatch</div>
+<pre><span class="kw">switch</span> (request.action) {
+  <span class="kw">case</span> <span class="str">'searchAndHighlightRegex'</span>:  <span class="cmt">// Highlight one specific company</span>
+    result = <span class="kw">await</span> <span class="fn">searchAndHighlightRegex</span>(pattern, flags, terms, company);
+    <span class="kw">break</span>;
+  <span class="kw">case</span> <span class="str">'scanForCompanies'</span>:          <span class="cmt">// Find ALL companies on the page</span>
+    result = <span class="kw">await</span> <span class="fn">scanForCompanies</span>(companies);
+    <span class="kw">break</span>;
+  <span class="kw">case</span> <span class="str">'navigateMatch'</span>:             <span class="cmt">// Jump to prev/next highlight</span>
+    result = <span class="fn">navigateMatch</span>(direction);
+    <span class="kw">break</span>;
+  <span class="kw">case</span> <span class="str">'scanForDate'</span>:               <span class="cmt">// Auto-detect publish date</span>
+    result = <span class="fn">findDate</span>();
+    <span class="kw">break</span>;
+  <span class="kw">case</span> <span class="str">'extractArticleText'</span>:        <span class="cmt">// Extract clean article body</span>
+    result = <span class="fn">extractArticleText</span>();
+    <span class="kw">break</span>;
+  <span class="kw">case</span> <span class="str">'clearHighlights'</span>:           <span class="cmt">// Remove all highlights</span>
+    <span class="fn">clearHighlights</span>();
+    <span class="kw">break</span>;
+  <span class="kw">case</span> <span class="str">'ping'</span>:                      <span class="cmt">// "Are you there?" health check</span>
+    sendResponse({ ok: <span class="kw">true</span> });
+    <span class="kw">break</span>;
+}</pre>
+</div>
+
+<h3 id="s6-2">Walking the DOM with TreeWalker</h3>
+
+<p>Before we explain the search functions, we need to understand how the content script reads the page.</p>
+
+<p>A web page's content is organized in a tree structure: the page is divided into sections, sections contain paragraphs, paragraphs contain sentences. At the very bottom of the tree are <strong class="term">text nodes</strong> — the actual words you read.</p>
+
+<div class="callout analogy">
+  <div class="callout-title">Analogy: the postal worker</div>
+  Imagine a city where streets contain buildings, buildings contain apartments, and apartments contain mailboxes. A <strong>TreeWalker</strong> is like a postal worker who visits every mailbox in the city, in order, starting from the first address and going all the way to the last — never skipping one, never going backward. The content script uses a TreeWalker to visit every text node on the page.
+</div>
+
+<div class="code-block">
+<div class="code-label">content.js — TreeWalker pattern</div>
+<pre><span class="cmt">// Create a walker that visits only text nodes</span>
+<span class="kw">const</span> walker = document.<span class="fn">createTreeWalker</span>(
+  document.body,           <span class="cmt">// Start at the top of the page</span>
+  NodeFilter.SHOW_TEXT,   <span class="cmt">// Only visit text nodes (not tags)</span>
+  {
+    <span class="fn">acceptNode</span>: (node) => {
+      <span class="cmt">// Skip script and style blocks — those aren't visible text</span>
+      <span class="kw">if</span> (node.parentNode.tagName === <span class="str">'SCRIPT'</span>) <span class="kw">return</span> NodeFilter.FILTER_REJECT;
+      <span class="kw">if</span> (node.parentNode.tagName === <span class="str">'STYLE'</span>)  <span class="kw">return</span> NodeFilter.FILTER_REJECT;
+      <span class="cmt">// Skip empty/whitespace-only nodes</span>
+      <span class="kw">if</span> (!node.textContent.trim()) <span class="kw">return</span> NodeFilter.FILTER_SKIP;
+      <span class="kw">return</span> NodeFilter.FILTER_ACCEPT;  <span class="cmt">// OK to scan this one</span>
+    }
+  }
+);
+
+<span class="kw">let</span> textNode;
+<span class="kw">while</span> ((textNode = walker.<span class="fn">nextNode</span>())) {
+  <span class="cmt">// textNode.textContent is the actual text in this part of the page</span>
+  <span class="cmt">// Run the regex against it here...</span>
+}</pre>
+</div>
+
+<h3 id="s6-3">scanForCompanies: finding all companies in one pass</h3>
+
+<p>When an article row has no assigned company, the extension scans for <em>all</em> known companies at once. Doing 30 separate passes (one per company) would be slow. Instead, the code combines all company patterns into a <em>single</em> mega-regex, where each company gets its own numbered capture group.</p>
+
+<div class="callout analogy">
+  <div class="callout-title">Analogy: a single scanner instead of 30 scanners</div>
+  Imagine scanning a document for 30 names. You could read the document 30 times (once per name). Or you could build a single checklist and read the document once, ticking off names as you find them. The combined regex is the checklist approach.
+</div>
+
+<div class="code-block">
+<div class="code-label">content.js — building the combined regex</div>
+<pre><span class="cmt">// Each company's pattern becomes one capture group</span>
+<span class="cmt">// Group 1 → company[0], Group 2 → company[1], etc.</span>
+<span class="kw">const</span> combinedPattern = companyPatterns
+  .map(p => <span class="str">`\\b(<span class="hl">${p}</span>)\\b`</span>)
+  .join(<span class="str">'|'</span>);
+
+<span class="cmt">// When a match fires, check which capture group is non-undefined</span>
+<span class="kw">while</span> ((match = regex.<span class="fn">exec</span>(text)) !== <span class="kw">null</span>) {
+  <span class="kw">for</span> (<span class="kw">let</span> i = <span class="num">1</span>; i &lt; match.length; i++) {
+    <span class="kw">if</span> (match[i] !== <span class="kw">undefined</span>) {
+      <span class="cmt">// Group i fired → company at index i-1</span>
+      matchedCompany = patternToCompany[i - <span class="num">1</span>];
+      foundCompanySet.add(matchedCompany);
+      <span class="kw">break</span>;
+    }
+  }
+}</pre>
+</div>
+
+<h3 id="s6-4">highlightMatches: the group-based DOM algorithm</h3>
+
+<p>Once we have a list of matches (each match knows: which text node it's in, where it starts, where it ends), we need to visually highlight them on the page. This means wrapping the matched text in a <code>&lt;span&gt;</code> element with a yellow background class.</p>
+
+<p>This sounds simple, but there's a nasty trap: <strong>what if two matches are in the same text node?</strong></p>
+
+<div class="callout warn">
+  <div class="callout-title">The crash that happened</div>
+  The old code processed matches in reverse order (last match first). For a node with matches at positions 5 and 20: process position 20 first — that splits the text node and removes the original from the DOM. Then try to process position 5 — but the original node is gone. Result: <code>TypeError: Cannot read properties of null</code>. The extension crashed.
+</div>
+
+<p>The fix: <strong>group all matches that share the same text node, then process each group in a single forward pass</strong> using the original node as a fixed anchor until every match has been processed.</p>
+
+<h4>Try the interactive visualizer below to see exactly how this works:</h4>
+
+<div class="demo-box">
+  <h4>🎯 Highlighter Algorithm Visualizer</h4>
+  <p style="font-size:0.88rem;color:var(--text2);margin-bottom:14px">This shows how matches are grouped by text node and processed in a forward pass. Step through each phase to see the DOM transformation.</p>
+
+  <div id="hl-demo-text">Pfizer and <strong>Merck</strong> reported earnings. Pfizer CEO spoke about Merck collaboration.</div>
+
+  <div id="hl-step-info">
+    <div class="step-box" id="hl-step-box">
+      Press <strong>Start</strong> to begin the step-by-step walkthrough.
+    </div>
+    <div class="step-progress" id="hl-step-progress"></div>
+  </div>
+
+  <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="demo-btn" onclick="hlStart()">▶ Start</button>
+    <button class="demo-btn secondary" onclick="hlNext()" id="hl-next-btn" disabled>Next Step →</button>
+    <button class="demo-btn secondary" onclick="hlReset()">↺ Reset</button>
+  </div>
+</div>
+
+<details>
+  <summary>📖 The full highlightMatches() source code — annotated</summary>
+  <div class="details-body">
+<div class="code-block">
+<div class="code-label">content.js — highlightMatches()</div>
+<pre><span class="fn">highlightMatches</span>() {
+  <span class="cmt">// ── Step 1: Group consecutive same-node matches ──────────────────</span>
+  <span class="cmt">// TreeWalker visits in document order, so same-node matches are adjacent.</span>
+  <span class="kw">const</span> groups = [];
+  <span class="kw">for</span> (<span class="kw">let</span> i = <span class="num">0</span>; i &lt; <span class="kw">this</span>.matches.length; i++) {
+    <span class="kw">const</span> last = groups[groups.length - <span class="num">1</span>];
+    <span class="kw">if</span> (last &amp;&amp; last.node === <span class="kw">this</span>.matches[i].node) {
+      last.indices.push(i);  <span class="cmt">// same node as previous match → add to group</span>
+    } <span class="kw">else</span> {
+      groups.push({ node: <span class="kw">this</span>.matches[i].node, indices: [i] }); <span class="cmt">// new group</span>
+    }
+  }
+
+  <span class="cmt">// ── Step 2: Process each group in one forward pass ───────────────</span>
+  <span class="kw">for</span> (<span class="kw">const</span> { node, indices } <span class="kw">of</span> groups) {
+    <span class="kw">const</span> text   = node.textContent;  <span class="cmt">// full text of the original node</span>
+    <span class="kw">const</span> parent = node.parentNode;   <span class="cmt">// the element containing this text</span>
+    <span class="kw">if</span> (!parent) <span class="kw">continue</span>;           <span class="cmt">// safety check</span>
+
+    <span class="kw">let</span> cursor = <span class="num">0</span>;  <span class="cmt">// our position in the text string</span>
+    <span class="kw">for</span> (<span class="kw">const</span> idx <span class="kw">of</span> indices) {
+      <span class="kw">const</span> { startIndex, endIndex } = <span class="kw">this</span>.matches[idx];
+
+      <span class="cmt">// Insert text BEFORE this match (the gap since the last highlight)</span>
+      <span class="kw">if</span> (startIndex > cursor) {
+        parent.<span class="fn">insertBefore</span>(
+          document.<span class="fn">createTextNode</span>(text.substring(cursor, startIndex)),
+          node   <span class="cmt">← node is still in DOM here, acts as anchor</span>
+        );
+      }
+
+      <span class="cmt">// Create the yellow highlight span</span>
+      <span class="kw">const</span> span = document.<span class="fn">createElement</span>(<span class="str">'span'</span>);
+      span.className = <span class="str">'csv-reviewer-highlight'</span>;
+      span.textContent = text.substring(startIndex, endIndex);
+      parent.<span class="fn">insertBefore</span>(span, node);  <span class="cmt">← insert BEFORE anchor</span>
+
+      <span class="kw">this</span>.matches[idx].element = span;  <span class="cmt">// save reference for navigation</span>
+      cursor = endIndex;
+    }
+
+    <span class="cmt">// Insert remaining text AFTER the last match</span>
+    <span class="kw">if</span> (cursor &lt; text.length) {
+      parent.<span class="fn">insertBefore</span>(document.<span class="fn">createTextNode</span>(text.substring(cursor)), node);
+    }
+
+    <span class="cmt">// NOW remove the original node — all its content is in new nodes</span>
+    parent.<span class="fn">removeChild</span>(node);
+  }
+}</pre>
+</div>
+  </div>
+</details>
+
+<h3 id="s6-5">Shift+click to remove a highlight</h3>
+
+<p>Each highlight span has a special click handler. When the analyst holds the Shift key and clicks a highlight, that single highlight instance is removed — without affecting other instances of the same company name on the page.</p>
+
+<p>This is useful for false positives: if "Lilly" correctly matched 5 times but one of those is actually "Lilly Pulitzer" (which slipped through), Shift+clicking that one removes it from the count without clearing all highlights.</p>
+
+<div class="callout info">
+  <div class="callout-title">Why Shift+click instead of just click?</div>
+  Highlight spans are often inside hyperlinks (<code>&lt;a&gt;</code> tags). A plain click on a link triggers navigation — the page would reload and all highlights would be lost. Using Shift+click avoids the ambiguity: the extension calls <code>e.preventDefault()</code> to block navigation AND <code>e.stopPropagation()</code> to stop the event from reaching the link handler.
+</div>
+
+<p>After removing a highlight, the content script notifies the side panel:</p>
+
+<div class="code-block">
+<div class="code-label">content.js — what happens after Shift+click</div>
+<pre><span class="cmt">// 1. Remove this match from the internal array</span>
+<span class="kw">const</span> i = <span class="kw">this</span>.matches.<span class="fn">findIndex</span>(m => m.element === highlightSpan);
+<span class="kw">this</span>.matches.<span class="fn">splice</span>(i, <span class="num">1</span>);
+
+<span class="cmt">// 2. Replace the span with its plain text (unwrap it)</span>
+par.<span class="fn">replaceChild</span>(document.<span class="fn">createTextNode</span>(highlightSpan.textContent), highlightSpan);
+par.<span class="fn">normalize</span>();  <span class="cmt">// merge any split text nodes back together</span>
+
+<span class="cmt">// 3. Check if ALL instances of this company are now gone</span>
+<span class="kw">const</span> companiesRemaining = [...<span class="kw">new</span> <span class="fn">Set</span>(<span class="kw">this</span>.matches.map(m => m.company))];
+<span class="kw">const</span> companyDropped = !companiesRemaining.<span class="fn">includes</span>(companyName) ? companyName : <span class="kw">null</span>;
+
+<span class="cmt">// 4. Send a message to the side panel</span>
+chrome.runtime.<span class="fn">sendMessage</span>({
+  action: <span class="str">'matchInstanceRemoved'</span>,
+  remaining: <span class="kw">this</span>.matches.length,
+  companyDropped,      <span class="cmt">// null unless all instances were removed</span>
+  companiesRemaining
+});</pre>
+</div>
+
+<p>The side panel receives this message and, if <code>companyDropped</code> is set, automatically unchecks that company in the checklist — so the analyst doesn't have to manually adjust the selection.</p>
+
+<h3 id="s6-6">extractArticleText: getting the article body</h3>
+
+<p>When the analyst clicks KEEP, the extension tries to extract the clean article body text and save it in the spreadsheet. The content script uses two strategies, tried in order:</p>
+
+<p><strong>Strategy 1 — known article containers:</strong> Many news sites use standard CSS class names or HTML attributes for their article body. The script tries a prioritized list:</p>
+
+<div class="code-block">
+<div class="code-label">content.js — article container selectors (in priority order)</div>
+<pre>[
+  <span class="str">'article [class*="body"]'</span>,     <span class="cmt">// e.g. &lt;div class="article-body"&gt;</span>
+  <span class="str">'[class*="article-content"]'</span>,   <span class="cmt">// common pattern</span>
+  <span class="str">'[itemprop="articleBody"]'</span>,      <span class="cmt">// Schema.org structured data</span>
+  <span class="str">'[data-testid="article-body"]'</span>, <span class="cmt">// React-based news sites</span>
+  <span class="str">'article'</span>,                       <span class="cmt">// HTML5 semantic element</span>
+  <span class="str">'main'</span>                           <span class="cmt">// Last resort: the main content area</span>
+]</pre>
+</div>
+
+<p><strong>Strategy 2 — paragraph density scoring:</strong> If no standard container is found, the script scores every <code>&lt;div&gt;</code>, <code>&lt;section&gt;</code>, and <code>&lt;main&gt;</code> element by adding up the lengths of its <code>&lt;p&gt;</code> paragraphs. The element with the highest score wins — it probably contains the most article text.</p>
+
+<p>Once the container is identified, only meaningful text tags are collected: <code>&lt;p&gt;</code>, headings (<code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code>), list items, and blockquotes. Navigation menus, social sharing buttons, comment sections, and advertisements are filtered out.</p>
+
+<h3 id="s6-7">findDate: four-tier date detection</h3>
+
+<p>The content script tries to find the article's publication date using four increasingly unreliable methods:</p>
+
+<table>
+  <tr><th>Tier</th><th>Method</th><th>Why it's reliable / unreliable</th></tr>
+  <tr><td>1 (best)</td><td>Meta tags like <code>article:published_time</code></td><td>Site explicitly declares the date in machine-readable format</td></tr>
+  <tr><td>2</td><td>HTML <code>&lt;time&gt;</code> elements with <code>datetime</code> attribute</td><td>Semantic HTML — well-structured sites use this</td></tr>
+  <tr><td>3</td><td>JSON-LD structured data (<code>datePublished</code>)</td><td>SEO-conscious sites embed this for Google</td></tr>
+  <tr><td>4 (least reliable)</td><td>Regex on the first 3,000 characters of page text</td><td>Works for "Jan 30, 2023" style dates but can match copyright years</td></tr>
+</table>
+
+<p>The side panel only accepts dates from the last two years — older dates are treated as stale and ignored (they're likely copyright years or boilerplate).</p>
+
+<!-- ====== SECTION 7: BACKGROUND ====== -->
+<h2 id="s7">7. The Background Service Worker: background.js</h2>
+
+<p>background.js is the shortest file in the project — intentionally. In Manifest V3, background scripts are <strong class="term">service workers</strong>: they can't hold onto data or keep running indefinitely. They start, do a job, and stop.</p>
+
+<p>findMentions needs the background script for exactly one reason: only the background script can receive the event that fires when the user clicks the extension icon, and only the background script can call <code>chrome.sidePanel.open()</code>.</p>
+
+<div class="code-block">
+<div class="code-label">background.js — the complete file</div>
+<pre><span class="cmt">// Open the side panel when the extension icon is clicked</span>
+chrome.action.onClicked.<span class="fn">addListener</span>(<span class="kw">async</span> (tab) => {
+  <span class="kw">await</span> chrome.sidePanel.<span class="fn">open</span>({ windowId: tab.windowId });
+});
+
+<span class="cmt">// Enable the side panel on every tab that becomes active</span>
+chrome.tabs.onActivated.<span class="fn">addListener</span>(<span class="kw">async</span> (activeInfo) => {
+  <span class="kw">await</span> chrome.sidePanel.<span class="fn">setOptions</span>({ tabId: activeInfo.tabId, enabled: <span class="kw">true</span> });
+});</pre>
+</div>
+
+<p>Everything else — state management, CSV parsing, messaging the content script — lives in sidebar.js, which stays alive as long as the panel is open.</p>
+
+<!-- ====== SECTION 8: CSV FILES ====== -->
+<h2 id="s8">8. CSV Input Files</h2>
+
+<h3 id="s8-1">The articles CSV (your work queue)</h3>
+
+<p>This is the main input: a spreadsheet of articles to review. The extension recognizes these columns:</p>
+
+<table>
+  <tr><th>Column name(s)</th><th>Required?</th><th>What it's for</th></tr>
+  <tr><td><code>link</code></td><td>Yes</td><td>URL of the article to open</td></tr>
+  <tr><td><code>company</code> or <code>corporation</code></td><td>Yes</td><td>Company whose mentions to highlight (can be blank → triggers "scan all")</td></tr>
+  <tr><td><code>sentiment</code> / <code>Sentiment</code></td><td>Optional</td><td>Pre-filled sentiment (Positive/Neutral/Negative)</td></tr>
+  <tr><td><code>topic</code> / <code>Topic</code></td><td>Optional</td><td>Topic category</td></tr>
+  <tr><td><code>sub_topic</code> / <code>Sub-topic</code></td><td>Optional</td><td>Sub-topic</td></tr>
+  <tr><td><code>date</code> / <code>Date</code></td><td>Optional</td><td>Publication date (YYYY-MM-DD)</td></tr>
+  <tr><td><code>content</code>, <code>article_text</code>, <code>full_text</code>, etc.</td><td>Optional</td><td>Article body text — auto-populated on KEEP if empty</td></tr>
+  <tr><td><code>KEEP/DELETE</code></td><td>Added by extension</td><td>The analyst's decision — rows with this filled in are skipped</td></tr>
+</table>
+
+<p>The column names are detected automatically, so <code>company</code> and <code>corporation</code> both work. The extension normalizes dates to YYYY-MM-DD and sentiment to title case (e.g. "positive" → "Positive").</p>
+
+<h3 id="s8-2">The company variations CSV</h3>
+
+<p>This is the two-column lookup table that powers the regex generator. Format:</p>
+
+<div class="code-block">
+<div class="code-label">companies_to_find.csv — format</div>
+<pre>CanonicalName,SearchVariation        <span class="cmt">← normal variation: search for this</span>
+CanonicalName,!ExclusionPhrase       <span class="cmt">← starts with !: suppress this match</span>
+
+<span class="cmt">Real examples from the repo:</span>
+GSK,GSK
+GSK,GlaxoSmithKline
+GSK,GSK plc
+Eli Lilly,Eli Lilly
+Eli Lilly,Lilly
+Eli Lilly,!Lilly Endowment
+Eli Lilly,!Lilly Foundation
+Eli Lilly,!Lilly school
+Johnson &amp; Johnson,JNJ
+Johnson &amp; Johnson,J&amp;J
+Johnson &amp; Johnson,Johnson and Johnson</pre>
+</div>
+
+<h4>Try the exclusion pattern tester:</h4>
+
+<div class="demo-box">
+  <h4>🚫 Exclusion Pattern Tester</h4>
+  <p style="font-size:0.88rem;color:var(--text2);margin-bottom:14px">Type a phrase and see whether the Eli Lilly exclusion pattern would block it. The pattern is: <code>\b(?:Eli Lilly|Lilly)(?!\s+(?:endowment|foundation|school))\b</code></p>
+  <div class="demo-label">Test phrase</div>
+  <input class="demo-input" id="ex-test" value="Lilly Endowment donated $10M" oninput="testExclusion()">
+  <div id="ex-result" class="demo-output" style="min-height:40px"></div>
+  <div class="demo-explanation" id="ex-explanation"></div>
+</div>
+
+<h3 id="s8-3">The topics CSV</h3>
+
+<div class="code-block">
+<div class="code-label">topic_subtopic_options.csv — format</div>
+<pre>Topic,Sub
+Corporate Financials &amp; Earnings,Investor Relations
+Corporate Operations,CEO Interviews &amp; Executive Thought Leadership
+Legal Action,LAWSUIT_FOCUS Lawsuit        <span class="cmt">← LAWSUIT_FOCUS is a placeholder</span>
+Pipeline &amp; Portfolio,TREATMENT_PRODUCT Development  <span class="cmt">← TREATMENT_PRODUCT is a placeholder</span></pre>
+</div>
+
+<p>Placeholder tokens like <code>TREATMENT_PRODUCT</code> appear in the dropdown as <code>[Treatment/Product]</code> — a visual cue that the analyst should replace the bracketed text with a specific product name (e.g. "Ozempic Development"). The edited text is what gets saved to the spreadsheet.</p>
+
+<h3 id="s8-4">Other files in the repo</h3>
+
+<table>
+  <tr><th>File</th><th>Status</th><th>Purpose</th></tr>
+  <tr><td><code>executives_search_terms.csv</code></td><td>Reference / not auto-loaded</td><td>Executive name variations for manual scanning</td></tr>
+  <tr><td><code>product_campaign_terms_full.csv</code></td><td>Reference / not auto-loaded</td><td>Product, campaign, and conference names by industry</td></tr>
+  <tr><td><code>test_input.csv</code></td><td>Test data</td><td>Sample articles CSV for testing the extension</td></tr>
+</table>
+
+<!-- ====== SECTION 9: DATA FLOW ====== -->
+<h2 id="s9">9. Complete Data Flow Walkthrough</h2>
+
+<p>Here's everything that happens when the analyst clicks KEEP on article N and the extension moves to article N+1. This walkthrough shows all the moving parts working together.</p>
+
+<details open>
+  <summary>📊 Full end-to-end flow: KEEP → next article</summary>
+  <div class="details-body">
+
+<div class="flow-step"><div class="flow-num">1</div><div><strong>Analyst clicks KEEP</strong><br>sidebar.js <code>tagEntry('KEEP')</code> fires. All buttons are disabled immediately (<code>isProcessing = true</code>) so the analyst can't accidentally double-click.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">2</div><div><strong>UI values captured</strong><br>sidebar.js reads the current sentiment, topic, subtopic, and date from the form controls and writes them into <code>csvData[currentIndex]</code>.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">3</div><div><strong>Auto-extract article text</strong> (if content column exists and is empty)<br>sidebar.js → <code>chrome.tabs.sendMessage(tabId, { action: 'extractArticleText' })</code><br>content.js runs <code>extractArticleText()</code> → tries article selectors → falls back to paragraph scoring → returns clean text<br>sidebar.js stores text in <code>csvData[currentIndex].article_text</code></div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">4</div><div><strong>Tag the row and save</strong><br><code>csvData[currentIndex]['KEEP/DELETE'] = 'KEEP'</code><br><code>chrome.storage.local.set({ csvData, currentIndex, ... })</code></div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">5</div><div><strong>Advance the pointer</strong><br><code>currentIndex++</code>. If multiple companies were selected, also skip past the auto-inserted duplicate rows.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">6</div><div><strong>Close the article tab</strong> (800ms delay so the analyst sees the "✅ Tagged as KEEP" feedback)<br><code>chrome.tabs.remove(closingTabId)</code></div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">7</div><div><strong>Open the next article</strong> — <code>processCurrentEntry()</code><br>Checks <code>preloadedTabs</code> map. If the URL was already background-loaded, activate that tab (fast path). If not, navigate the current tab.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">8</div><div><strong>Wait for page load</strong><br>A <code>chrome.tabs.onUpdated</code> listener waits for <code>status === 'complete'</code>. The listener is registered <em>before</em> navigation to prevent the race condition where a fast page loads before the listener attaches. A 90-second timeout unblocks the UI if the page never loads.</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">9</div><div><strong>Ensure content script is running</strong><br><code>chrome.tabs.sendMessage(tabId, { action: 'ping' })</code><br>If no response: <code>chrome.scripting.executeScript({ files: ['content.js'] })</code></div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">10</div><div><strong>Search the page</strong><br>sidebar.js calls <code>generateCompanyRegexPattern(company)</code> → sends <code>searchAndHighlightRegex</code> message to content.js<br>content.js TreeWalker runs → finds matches → <code>highlightMatches()</code> → scrolls to first match<br>Returns <code>{ matchCount: 7, currentMatch: 1 }</code></div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">11</div><div><strong>Auto-detect date</strong> (concurrent with step 10)<br><code>chrome.tabs.sendMessage(tabId, { action: 'scanForDate' })</code><br>content.js checks meta tags → <code>&lt;time&gt;</code> → JSON-LD → body text regex<br>sidebar.js populates the date field if a recent date is found</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="flow-num">12</div><div><strong>Show review section</strong><br><code>isProcessing = false</code> — buttons re-enabled. Company checklist shown (pre-checked if scan found companies). Sentiment/topic/date fields restored from any existing data. The analyst is ready to review.</div></div>
+
+  </div>
+</details>
+
+<!-- ====== SECTION 10: DESIGN DECISIONS ====== -->
+<h2 id="s10">10. Key Design Decisions and Gotchas</h2>
+
+<h3 id="s10-1">Why regex instead of simple text search</h3>
+
+<p>The simplest approach to finding "Pfizer" in an article would be <code>page.includes("Pfizer")</code>. This fails for several reasons:</p>
+
+<ul>
+  <li><strong>Case sensitivity:</strong> "PFIZER" and "pfizer" wouldn't match.</li>
+  <li><strong>Substring matches:</strong> "Pfizer" would match inside a longer word.</li>
+  <li><strong>Multiple spellings:</strong> You'd need a separate search for each variation.</li>
+  <li><strong>False positives:</strong> "Lilly" would match "Lilly Pulitzer" with no way to suppress it.</li>
+</ul>
+
+<p>Regex with the <code>i</code> flag solves case sensitivity. Word boundaries (<code>\b</code>) prevent substring matches. Alternation (<code>(?:Eli Lilly|Lilly)</code>) matches all spellings in one pass. Negative lookahead prevents false positives. One regex rule replaces what would otherwise be many lines of if/then logic.</p>
+
+<h3 id="s10-2">The DOM crash and how the group-based highlighter fixes it</h3>
+
+<p>See Section 6.4 above. The key principle: <strong>never remove or re-parent a DOM node that another piece of code still holds a reference to.</strong> The old reverse-order approach removed the original text node too early. The new forward-pass approach uses the original node as a read-only anchor until all new nodes are inserted, then removes it last.</p>
+
+<h3 id="s10-3">The race condition in tab loading</h3>
+
+<p>When the extension calls <code>chrome.tabs.update(tabId, { url })</code> to navigate a tab, the tab starts loading. Chrome fires a <code>chrome.tabs.onUpdated</code> event when loading completes. If the extension registers the listener <em>after</em> navigation starts, a fast-loading page might fire "complete" before the listener is attached — and the extension would wait forever.</p>
+
+<p>The fix: register the listener <strong>before</strong> calling <code>chrome.tabs.update()</code>. The listener checks that the tab ID matches before acting, so it ignores events from other tabs. A 90-second safety timeout unblocks the UI if the page never fires "complete."</p>
+
+<h3 id="s10-4">The [auto] / [setup] / [skip] commit markers</h3>
+
+<p>The repository has a post-commit hook (a script that runs automatically after every git commit). It generates an HTML writeup explaining what changed in that commit. To prevent infinite recursion — the writeup commit triggering another writeup — commit messages that contain <code>[auto]</code>, <code>[setup]</code>, or <code>[skip]</code> are ignored by the hook.</p>
+
+<p>Rule of thumb: any commit you create manually doesn't need a marker. If a script or automated process creates a commit, include one of these markers so the hook doesn't cascade.</p>
+
+<h3 id="s10-5">Storage quota and article text</h3>
+
+<p><code>chrome.storage.local</code> has a per-item size limit. Article body text (sometimes thousands of words) can easily exceed this. The extension strips the content column before saving state (<code>saveState()</code>) and re-scrapes it on the next KEEP. This means: if you clear all data without downloading the CSV first, article text is lost — but other fields (KEEP/DELETE, sentiment, topic) are preserved.</p>
+
+<h3 id="s10-6">BigQuery mode vs CSV mode</h3>
+
+<p>The extension supports two data sources: a CSV file you upload, or a BigQuery table in Google Cloud. Both modes use identical review UI and <code>csvData</code> array. The difference:</p>
+
+<ul>
+  <li><strong>CSV mode:</strong> Load a file → review → download a new file. All data stays local.</li>
+  <li><strong>BigQuery mode:</strong> Authenticate with Google → query unreviewed rows → review → each KEEP/DELETE is written back to BigQuery in real time via the REST API.</li>
+</ul>
+
+<p>In BQ mode, <code>saveState()</code> does not persist <code>csvData</code> to chrome.storage because the data lives in BigQuery and should be re-fetched (to get the freshest unreviewed rows) on next session.</p>
+
+<!-- ====== SECTION 11: SETUP ====== -->
+<h2 id="s11">11. Extension Setup and Local Development</h2>
+
+<h3 id="s11-1">Loading the extension in Chrome</h3>
+
+<ol>
+  <li>Open Chrome and navigate to <code>chrome://extensions</code></li>
+  <li>Enable <strong>Developer mode</strong> (toggle in the top-right corner)</li>
+  <li>Click <strong>Load unpacked</strong></li>
+  <li>Select the repository root folder (the one containing <code>manifest.json</code>)</li>
+  <li>The extension appears in the toolbar. Click it to open the side panel.</li>
+</ol>
+
+<h3 id="s11-2">What to reload after making changes</h3>
+
+<table>
+  <tr><th>File changed</th><th>What to do</th></tr>
+  <tr><td><code>manifest.json</code></td><td>Reload the extension on chrome://extensions, then reopen the side panel</td></tr>
+  <tr><td><code>background.js</code></td><td>Reload the extension on chrome://extensions</td></tr>
+  <tr><td><code>sidebar.js</code> or <code>sidebar.html</code></td><td>Reload the extension, then close and reopen the side panel</td></tr>
+  <tr><td><code>content.js</code> or <code>content.css</code></td><td>Reload the extension, then reload any open article tabs (Ctrl+R on the article tab)</td></tr>
+</table>
+
+<div class="callout info">
+  <div class="callout-title">Quick tip</div>
+  On the chrome://extensions page, there's a small circular arrow icon on the extension card. Clicking it reloads the extension without refreshing the whole Chrome extensions page. You'll still need to close and reopen the side panel to pick up sidebar.js changes.
+</div>
+
+<h3 id="s11-3">Adding a new company</h3>
+
+<p>Add rows to <code>companies_to_find.csv</code> in the repo:</p>
+
+<div class="code-block">
+<div class="code-label">companies_to_find.csv — adding a new company</div>
+<pre>MyCompany,MyCompany               <span class="cmt">← the main name</span>
+MyCompany,MyCo                    <span class="cmt">← an abbreviation</span>
+MyCompany,My Company Inc.         <span class="cmt">← a variation</span>
+MyCompany,!My Company Foundation  <span class="cmt">← suppress this phrase</span></pre>
+</div>
+
+<p>No code changes needed. Reload the extension, then re-load the variations CSV in the extension UI.</p>
+
+<h3 id="s11-4">Adding a new topic/sub-topic</h3>
+
+<p>Add a row to <code>topic_subtopic_options.csv</code>. If the sub-topic has a fill-in-the-blank part, use an archetype token like <code>TREATMENT_PRODUCT</code>. Then add a case to <code>humanizeSubtopic()</code> in <code>sidebar.js</code> if you're creating a new token type:</p>
+
+<div class="code-block">
+<div class="code-label">sidebar.js — humanizeSubtopic()</div>
+<pre><span class="fn">humanizeSubtopic</span>(raw) {
+  <span class="kw">return</span> raw
+    .<span class="fn">replace</span>(<span class="re">/TREATMENT_PRODUCT/g</span>, <span class="str">'[Treatment/Product]'</span>)
+    .<span class="fn">replace</span>(<span class="re">/LAWSUIT_FOCUS/g</span>,    <span class="str">'[Lawsuit Focus]'</span>)
+    .<span class="fn">replace</span>(<span class="re">/MY_NEW_TOKEN/g</span>,    <span class="str">'[My New Token]'</span>);  <span class="cmt">← add new tokens here</span>
+}</pre>
+</div>
+
+<h3 id="s11-5">The debug log</h3>
+
+<p>The side panel has a debug log panel at the bottom. Every call to <code>this.log(message)</code> writes there with a timestamp, and also to the browser's developer console (<code>F12</code> → Console tab).</p>
+
+<p>Click <strong>Log to file</strong> to pick a persistent log file on disk. The file handle is stored in IndexedDB and automatically reconnected on future sessions — no repeated file picking needed.</p>
+
+<p>The log captures errors (including those from catch blocks and unhandled promise rejections), which makes it much easier to debug issues that happen deep in the async flow.</p>
+
+<footer>
+  <p>This document is generated from the source as of the commits listed in the git log. Update it when significant features change.</p>
+</footer>
+
+</main>
+
+<!-- ====== JAVASCRIPT ====== -->
+<script>
+// ─── THEME TOGGLE ──────────────────────────────────────────────────────────
+const root = document.documentElement;
+const themeBtn = document.getElementById('theme-btn');
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+let currentTheme = prefersDark ? 'dark' : 'light';
+root.setAttribute('data-theme', currentTheme);
+themeBtn.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+
+themeBtn.addEventListener('click', () => {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', currentTheme);
+  themeBtn.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+});
+
+// ─── SIDEBAR TOC ────────────────────────────────────────────────────────────
+const toc = document.getElementById('toc');
+const headings = document.querySelectorAll('#main h2, #main h3');
+const tocLinks = [];
+
+headings.forEach(h => {
+  if (!h.id) return;
+  const a = document.createElement('a');
+  a.href = '#' + h.id;
+  a.textContent = h.textContent;
+  a.className = h.tagName === 'H2' ? 'toc-h2' : 'toc-h3';
+  toc.appendChild(a);
+  tocLinks.push({ el: a, target: h });
+});
+
+// Scroll spy
+let scrollTimer;
+window.addEventListener('scroll', () => {
+  clearTimeout(scrollTimer);
+  scrollTimer = setTimeout(() => {
+    const scrollY = window.scrollY + 100;
+    let active = tocLinks[0];
+    for (const link of tocLinks) {
+      if (link.target.offsetTop <= scrollY) active = link;
+    }
+    tocLinks.forEach(l => l.el.classList.remove('active'));
+    if (active) active.el.classList.add('active');
+    // Scroll active link into view in sidebar
+    if (active && active.el.scrollIntoView) {
+      active.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, 50);
+}, { passive: true });
+
+// ─── ARCH DIAGRAM ───────────────────────────────────────────────────────────
+function showArchPanel(id) {
+  document.querySelectorAll('.arch-panel').forEach(p => p.classList.remove('visible'));
+  const panel = document.getElementById('arch-panel-' + id);
+  if (panel) panel.classList.add('visible');
+}
+
+// ─── REGEX GENERATOR ────────────────────────────────────────────────────────
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function generatePattern() {
+  const company = document.getElementById('rg-company').value.trim();
+  const varsRaw = document.getElementById('rg-variations').value.trim();
+  const exRaw = document.getElementById('rg-exclusions').value.trim();
+
+  const allTerms = [company, ...varsRaw.split('\n').map(s => s.trim()).filter(Boolean)];
+  const unique = [...new Set(allTerms)];
+  const cleaned = unique.map(escapeRegex);
+
+  const exclusions = exRaw.split('\n').map(s => s.trim()).filter(Boolean);
+  const suffixes = new Set();
+  for (const phrase of exclusions) {
+    const phraseLower = phrase.toLowerCase();
+    let suffix = null;
+    for (const term of unique) {
+      const tl = term.toLowerCase();
+      if (phraseLower.startsWith(tl)) {
+        suffix = phraseLower.slice(tl.length).trim();
+        break;
+      }
+    }
+    if (suffix === null) suffix = phraseLower;
+    if (suffix.length > 0) suffixes.add(escapeRegex(suffix));
+  }
+
+  let lookahead = '';
+  if (suffixes.size > 0) {
+    lookahead = `(?!\\s+(?:${[...suffixes].join('|')}))`;
+  }
+
+  return `\\b(?:${cleaned.join('|')})${lookahead}\\b`;
+}
+
+function updateRegex() {
+  const pattern = generatePattern();
+  document.getElementById('rg-output').textContent = pattern;
+  testRegex();
+}
+
+function testRegex() {
+  const pattern = document.getElementById('rg-output').textContent;
+  const testText = document.getElementById('rg-test').value;
+  if (!pattern || !testText) return;
+
+  try {
+    const rx = new RegExp(pattern, 'gi');
+    let result = '';
+    let lastIdx = 0;
+    let matchCount = 0;
+    let m;
+    const plainText = testText;
+    rx.lastIndex = 0;
+    const segments = [];
+    while ((m = rx.exec(plainText)) !== null) {
+      segments.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+      if (m.index === rx.lastIndex) rx.lastIndex++;
+    }
+    let html = '';
+    let cur = 0;
+    for (const seg of segments) {
+      html += esc(plainText.slice(cur, seg.start));
+      html += `<span class="match-highlight">✓ ${esc(seg.text)}</span>`;
+      matchCount++;
+      cur = seg.end;
+    }
+    html += esc(plainText.slice(cur));
+
+    document.getElementById('rg-test-output').innerHTML = html || esc(testText);
+
+    const exRaw = document.getElementById('rg-exclusions').value.trim();
+    const exclusions = exRaw.split('\n').map(s => s.trim()).filter(Boolean);
+    const varsRaw = document.getElementById('rg-variations').value.trim();
+    const allTerms = [document.getElementById('rg-company').value.trim(), ...varsRaw.split('\n').map(s => s.trim()).filter(Boolean)];
+    let blockedCount = 0;
+    for (const ex of exclusions) {
+      if (plainText.toLowerCase().includes(ex.toLowerCase())) blockedCount++;
+    }
+
+    document.getElementById('rg-explanation').textContent =
+      matchCount === 0
+        ? '⚠️ No matches found. The term may not appear in the test text, or the pattern is filtering it out.'
+        : `✅ Found ${matchCount} match${matchCount !== 1 ? 'es' : ''} (highlighted in yellow). Exclusion patterns blocked ${blockedCount} phrase${blockedCount !== 1 ? 's' : ''} from matching.`;
+  } catch (e) {
+    document.getElementById('rg-test-output').textContent = 'Error: ' + e.message;
+  }
+}
+
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Init regex on load
+updateRegex();
+
+// ─── EXCLUSION TESTER ────────────────────────────────────────────────────────
+function testExclusion() {
+  const phrase = document.getElementById('ex-test').value;
+  const pattern = /\b(?:Eli Lilly|Lilly)(?!\s+(?:endowment|foundation|school))\b/gi;
+  pattern.lastIndex = 0;
+  let m;
+  const segments = [];
+  while ((m = pattern.exec(phrase)) !== null) {
+    segments.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+    if (m.index === pattern.lastIndex) pattern.lastIndex++;
+  }
+  let html = '';
+  let cur = 0;
+  for (const seg of segments) {
+    html += esc(phrase.slice(cur, seg.start));
+    html += `<span class="match-highlight">✓ ${esc(seg.text)}</span>`;
+    cur = seg.end;
+  }
+  html += esc(phrase.slice(cur));
+  document.getElementById('ex-result').innerHTML = html || esc(phrase);
+
+  const hasMatch = segments.length > 0;
+  const hasExcluded = /\blilly\s+(endowment|foundation|school)/i.test(phrase);
+  let exp = '';
+  if (hasMatch && hasExcluded) {
+    exp = '✅ Some instances matched (highlighted). ⛔ Some were blocked by the exclusion pattern.';
+  } else if (hasMatch) {
+    exp = `✅ ${segments.length} match${segments.length !== 1 ? 'es' : ''} found — none blocked.`;
+  } else if (hasExcluded) {
+    exp = '⛔ All potential matches were blocked by the exclusion pattern. The phrase contains an excluded suffix (Endowment, Foundation, or school).';
+  } else {
+    exp = '⬜ No matches found (the company name does not appear in this phrase).';
+  }
+  document.getElementById('ex-explanation').textContent = exp;
+}
+testExclusion();
+
+// ─── HIGHLIGHTER VISUALIZER ──────────────────────────────────────────────────
+const HL_STEPS = [
+  {
+    title: 'Starting state',
+    desc: 'The page has two text nodes. Text node A: "Pfizer and " (inside a plain paragraph). Text node B: "Merck reported earnings. Pfizer CEO spoke about Merck collaboration." (after the bold tag). The TreeWalker has already found 4 matches: "Pfizer" at position 0 in node A, and "Merck" at 0, "Pfizer" at 25, "Merck" at 41 in node B.',
+    highlight: null
+  },
+  {
+    title: 'Step 1: Group matches by text node',
+    desc: 'The matches array has 4 entries. We scan through them and group consecutive matches that share the same text node.\n\n• Match 0 ("Pfizer", node A) → starts Group 1\n• Match 1 ("Merck", node B) → starts Group 2 (different node)\n• Match 2 ("Pfizer", node B) → added to Group 2 (same node)\n• Match 3 ("Merck", node B) → added to Group 2 (same node)\n\nResult: 2 groups.',
+    highlight: 'group'
+  },
+  {
+    title: 'Step 2: Process Group 1 (node A — "Pfizer and ")',
+    desc: 'Node A has one match: "Pfizer" at position 0–6.\n\nForward pass with cursor=0:\n• cursor(0) == startIndex(0): no text to insert before\n• Create span: "Pfizer" (yellow highlight)\n• insertBefore(span, nodeA) — inserts before nodeA, which stays as anchor\n• cursor = 6\n• cursor(6) < text.length(11): insert remaining " and "\n• removeChild(nodeA) — original node removed last\n\nResult: nodeA is replaced by [span:Pfizer] + [text: " and "]',
+    highlight: 'group1'
+  },
+  {
+    title: 'Step 3: Process Group 2 (node B — 3 matches)',
+    desc: 'Node B has 3 matches. Forward pass:\n\n1. cursor=0, match "Merck" at 0–5:\n   • No text before\n   • Insert span "Merck"\n   • cursor=5\n2. cursor=5, match "Pfizer" at 25–31:\n   • Insert text " reported earnings. " (chars 5–25)\n   • Insert span "Pfizer"\n   • cursor=31\n3. cursor=31, match "Merck" at 41–46:\n   • Insert text " CEO spoke about " (chars 31–41)\n   • Insert span "Merck"\n   • cursor=46\n• Insert remaining " collaboration." (46–end)\n• removeChild(nodeB)\n\nNode B is replaced by 7 new nodes. The original node was the anchor throughout — never removed until the last step.',
+    highlight: 'group2'
+  },
+  {
+    title: 'Final result',
+    desc: 'All 4 matches are now wrapped in highlight spans. The DOM has been transformed. Notice:\n\n✅ The "Pfizer" inside the <strong> tag was NOT highlighted — the TreeWalker skips it because it\'s in a different text node (owned by <strong>).\n✅ No crash — we never called parentNode on a detached node.\n✅ Cursor approach means we never needed index offsets or reverse-order tricks.',
+    highlight: 'done'
+  }
+];
+
+let hlStep = -1;
+
+function hlStart() {
+  hlStep = 0;
+  renderHlStep();
+  document.getElementById('hl-next-btn').disabled = false;
+}
+
+function hlNext() {
+  if (hlStep < HL_STEPS.length - 1) { hlStep++; renderHlStep(); }
+  if (hlStep === HL_STEPS.length - 1) document.getElementById('hl-next-btn').disabled = true;
+}
+
+function hlReset() {
+  hlStep = -1;
+  document.getElementById('hl-demo-text').innerHTML =
+    'Pfizer and <strong>Merck</strong> reported earnings. Pfizer CEO spoke about Merck collaboration.';
+  document.getElementById('hl-step-box').innerHTML = 'Press <strong>Start</strong> to begin the step-by-step walkthrough.';
+  document.getElementById('hl-step-progress').textContent = '';
+  document.getElementById('hl-next-btn').disabled = true;
+}
+
+function renderHlStep() {
+  const step = HL_STEPS[hlStep];
+  document.getElementById('hl-step-progress').textContent = `Step ${hlStep + 1} of ${HL_STEPS.length}`;
+
+  // Update text display
+  const display = document.getElementById('hl-demo-text');
+  if (step.highlight === 'group') {
+    display.innerHTML = '<span style="background:rgba(152,210,197,0.25);border-radius:4px;padding:2px">[Node A] Pfizer and </span>' +
+      ' <strong>Merck</strong> ' +
+      '<span style="background:rgba(240,113,120,0.2);border-radius:4px;padding:2px">[Node B] Merck reported earnings. Pfizer CEO spoke about Merck collaboration.</span>';
+  } else if (step.highlight === 'group1') {
+    display.innerHTML = '<span class="hl-span">Pfizer</span> and <strong>Merck</strong> reported earnings. Pfizer CEO spoke about Merck collaboration.';
+  } else if (step.highlight === 'group2') {
+    display.innerHTML = '<span class="hl-span">Pfizer</span> and <strong>Merck</strong> <span class="hl-span">Merck</span> reported earnings. <span class="hl-span">Pfizer</span> CEO spoke about <span class="hl-span">Merck</span> collaboration.';
+  } else if (step.highlight === 'done') {
+    display.innerHTML = '<span class="hl-span current">Pfizer</span> and <strong>Merck</strong> <span class="hl-span">Merck</span> reported earnings. <span class="hl-span">Pfizer</span> CEO spoke about <span class="hl-span">Merck</span> collaboration.';
+  } else {
+    display.innerHTML = 'Pfizer and <strong>Merck</strong> reported earnings. Pfizer CEO spoke about Merck collaboration.';
+  }
+
+  document.getElementById('hl-step-box').innerHTML =
+    `<strong>${esc(step.title)}</strong><br><br>${esc(step.desc).replace(/\n/g, '<br>')}`;
+}
+
+// ─── BQ COMPARISON DIAGRAM ───────────────────────────────────────────────────
+const BQ_COMPARE = {
+  csv: [
+    {
+      label: '1. Upload CSV file',
+      badge: 'CSV only',
+      detail: `The analyst clicks "Choose File" and selects a CSV from their computer. The built-in RFC 4180 parser reads the file and creates one JavaScript object per row, all stored in <code>csvData</code>. No internet connection is needed — the work queue lives entirely on the analyst's machine until a decision is made.`
+    },
+    {
+      label: '2. Find next unreviewed row',
+      badge: 'Shared step',
+      detail: `The extension scans <code>csvData</code> for the first row where the KEEP/DELETE column is empty. That row is the current article to review. In CSV mode this is an instant in-memory scan.`
+    },
+    {
+      label: '3. Open the article tab',
+      badge: 'Shared step',
+      detail: `The extension activates a preloaded background tab for this article URL, or navigates a fresh tab if no preloaded one exists. The next 1–3 articles are immediately opened in background tabs to hide page-load wait times during review.`
+    },
+    {
+      label: '4. Highlight company mentions',
+      badge: 'Shared step',
+      detail: `The content script (content.js) receives the company regex pattern from the sidebar. It uses a TreeWalker to visit every text node on the page and wraps each match in a <code>&lt;span&gt;</code> with a yellow highlight class. The sidebar receives a count of how many matches were found.`
+    },
+    {
+      label: '5. Analyst reviews and decides',
+      badge: 'Shared step',
+      detail: `The analyst reads the article, navigates highlights using Previous/Next buttons, and clicks KEEP or DELETE. Shift+clicking a highlight removes it. Company checkboxes let the analyst select which company the article covers.`
+    },
+    {
+      label: '6. Record decision locally',
+      badge: 'CSV only',
+      detail: `The KEEP/DELETE value is written to the in-memory <code>csvData</code> array for the current row. State is saved to <code>chrome.storage.local</code> so the analyst can close and resume later. No network request is made at this step.`
+    },
+    {
+      label: '7. Download the annotated CSV',
+      badge: 'CSV only',
+      detail: `When the batch is done (or at any point), clicking "Download CSV" serializes <code>csvData</code> back to RFC 4180 format and triggers a browser file download. The resulting file contains all original columns plus the KEEP/DELETE column with the analyst's decisions.`
+    }
+  ],
+  bq: [
+    {
+      label: '1. Sign in to Google',
+      badge: 'BQ only',
+      detail: `<code>bqConnect()</code> builds an OAuth 2.0 URL and opens a Chrome-managed Google sign-in popup. After the analyst logs in, Google redirects to the extension's unique <code>chromiumapp.org</code> redirect URI with an access token in the URL hash. The token and its expiry time are stored in memory.`
+    },
+    {
+      label: '2. Fetch unreviewed rows',
+      badge: 'BQ only',
+      detail: `<code>bqLoadData()</code> runs a LEFT JOIN SQL query against BigQuery: it finds up to 500 rows in <code>processed_serp_results</code> that have no matching row in <code>validated_results</code>. Duplicates are eliminated by (URL, company) pair. A parallel count query reports how many total unreviewed rows remain. Results are stored as <code>csvData</code> — from this point the review loop is identical to CSV mode.`
+    },
+    {
+      label: '3. Find next unreviewed row',
+      badge: 'Shared step',
+      detail: `Same as CSV mode: scan <code>csvData</code> for the first row with an empty KEEP/DELETE column. Because BigQuery already filtered to unreviewed rows, this almost always starts at row 0.`
+    },
+    {
+      label: '4. Open the article tab',
+      badge: 'Shared step',
+      detail: `Identical to CSV mode: activate a preloaded background tab or navigate a fresh one. Background preloading works the same in both modes.`
+    },
+    {
+      label: '5. Highlight company mentions',
+      badge: 'Shared step',
+      detail: `Identical to CSV mode: the content script receives the regex, scans all text nodes, and wraps matches in highlight spans.`
+    },
+    {
+      label: '6. Analyst reviews and decides',
+      badge: 'Shared step',
+      detail: `Identical to CSV mode: the analyst reads the article, navigates highlights, and clicks KEEP or DELETE.`
+    },
+    {
+      label: '7. Write decision to BigQuery',
+      badge: 'BQ only',
+      detail: `<code>writeValidationToBigQuery()</code> immediately builds a parameterized SQL INSERT and submits it as an async BigQuery job (polled until complete). A new row appears in <code>validated_results</code> containing all original source fields plus <code>decision</code> and <code>validated_at</code>. No file is created — the record is live in the cloud instantly and visible to all team members.`
+    },
+    {
+      label: '8. Load next batch when ready',
+      badge: 'BQ only',
+      detail: `After finishing the 500-row batch, the analyst clicks "Load Data" again. BigQuery re-runs the LEFT JOIN — rows just validated are now in <code>validated_results</code> and are excluded. The next 500 unreviewed rows are returned. This cycle continues until no unreviewed rows remain.`
+    }
+  ]
+};
+
+function renderBqCompare() {
+  const badgeColors = { 'Shared step': 'var(--accent2)', 'CSV only': '#6b7280', 'BQ only': 'var(--accent3)' };
+  ['csv', 'bq'].forEach(side => {
+    const list = document.getElementById(side + '-step-list');
+    if (!list) return;
+    BQ_COMPARE[side].forEach(step => {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:0.86rem;transition:background 0.12s;line-height:1.5;';
+      const badgeColor = badgeColors[step.badge] || 'var(--accent)';
+      div.innerHTML = esc(step.label)
+        + `<span style="display:inline-block;font-size:10px;background:${badgeColor};color:#fff;border-radius:10px;padding:1px 7px;margin-left:6px;vertical-align:middle;">${esc(step.badge)}</span>`;
+      div.addEventListener('mouseenter', () => { if (!div._bqActive) div.style.background = 'var(--bg3)'; });
+      div.addEventListener('mouseleave', () => { if (!div._bqActive) div.style.background = ''; });
+      div.addEventListener('click', () => {
+        document.querySelectorAll('.bq-step-card').forEach(el => {
+          el.style.background = '';
+          el.style.fontWeight = '';
+          el._bqActive = false;
+        });
+        div.style.background = 'var(--bg3)';
+        div.style.fontWeight = '600';
+        div._bqActive = true;
+        document.getElementById('compare-detail-box').innerHTML =
+          '<strong>' + esc(step.label) + '</strong><br><br>' + step.detail;
+      });
+      div.className = 'bq-step-card';
+      list.appendChild(div);
+    });
+  });
+}
+renderBqCompare();
+</script>
+</body>
+</html>
