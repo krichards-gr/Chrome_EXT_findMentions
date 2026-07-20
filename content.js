@@ -599,9 +599,11 @@ class PageSearcher {
         highlightSpan.textContent = matchText;
         highlightSpan.dataset.matchIndex = idx;
         highlightSpan.dataset.company = company || '';
-        highlightSpan.title = `Click to remove this instance (Match ${idx + 1}: "${matchedText || matchText}")`;
+        highlightSpan.title = `Shift+click to remove this instance (Match ${idx + 1}: "${matchedText || matchText}")`;
 
         highlightSpan.addEventListener('click', (e) => {
+          if (!e.shiftKey) return;
+          e.preventDefault();
           e.stopPropagation();
           const companyName = highlightSpan.dataset.company;
 
